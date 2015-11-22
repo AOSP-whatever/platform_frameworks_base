@@ -3056,6 +3056,8 @@
   <java-symbol type="array" name="config_batteryPackageTypeSystem" />
   <java-symbol type="array" name="config_batteryPackageTypeService" />
 
+  <java-symbol type="bool" name="config_useSystemClockforRotationSensor" />
+
   <java-symbol type="bool" name="config_dual_LTE_capability" />
 
   <!-- whether to show dual bar -->
