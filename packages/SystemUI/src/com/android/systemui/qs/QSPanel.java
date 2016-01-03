@@ -35,6 +35,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import com.android.internal.logging.MetricsLogger;
@@ -229,7 +230,9 @@ public class QSPanel extends LinearLayout implements Tunable, Callback, Brightne
             R.layout.quick_settings_brightness_dialog, this, false);
         addView(mBrightnessView);
         mBrightnessController = new BrightnessController(getContext(),
-                findViewById(R.id.brightness_slider), mBroadcastDispatcher);
+                findViewById(R.id.brightness_slider),
+                findViewById(R.id.brightness_icon),
+                mBroadcastDispatcher);
     }
 
     protected QSTileLayout createRegularTileLayout() {
