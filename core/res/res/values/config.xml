@@ -2944,6 +2944,9 @@
     <!-- An array of packages that need to be treated as type service in battery settings -->
     <string-array translatable="false" name="config_batteryPackageTypeService"/>
 
+    <!-- Whether to persist the notification for when a usb drive device is plugged in -->
+    <bool name="config_persistUsbDriveNotification">true</bool>
+
     <bool name="config_dual_LTE_capability">false</bool>
 
     <!-- whether to show dual bar -->
