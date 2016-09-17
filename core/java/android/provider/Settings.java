@@ -4792,6 +4792,94 @@ public final class Settings {
          */
 
         /**
+<<<<<<< HEAD
+=======
+         * Value for button brightness.
+         * This is an integer value in a range between 0 and 255.
+         *      0 = off
+         *    255 = default
+         *    255 = max
+         * @hide
+         */
+        public static final String BUTTON_BRIGHTNESS = "button_brightness";
+
+        /**
+         * Whether user can enable/disable button brightness.
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         * @hide
+         */
+        public static final String BUTTON_BRIGHTNESS_ENABLED = "button_brightness_enabled";
+
+        /**
+         * Settings to backup. This is here so that it's in the same place as the settings
+         * keys and easy to update.
+         *
+         * NOTE: Settings are backed up and restored in the order they appear
+         *       in this array. If you have one setting depending on another,
+         *       make sure that they are ordered appropriately.
+         *
+         * @hide
+         */
+        @UnsupportedAppUsage
+        public static final String[] SETTINGS_TO_BACKUP = {
+            STAY_ON_WHILE_PLUGGED_IN,   // moved to global
+            WIFI_USE_STATIC_IP,
+            WIFI_STATIC_IP,
+            WIFI_STATIC_GATEWAY,
+            WIFI_STATIC_NETMASK,
+            WIFI_STATIC_DNS1,
+            WIFI_STATIC_DNS2,
+            BLUETOOTH_DISCOVERABILITY,
+            BLUETOOTH_DISCOVERABILITY_TIMEOUT,
+            FONT_SCALE,
+            DIM_SCREEN,
+            SCREEN_OFF_TIMEOUT,
+            SCREEN_BRIGHTNESS_MODE,
+            SCREEN_AUTO_BRIGHTNESS_ADJ,
+            SCREEN_BRIGHTNESS_FOR_VR,
+            ADAPTIVE_SLEEP,
+            VIBRATE_INPUT_DEVICES,
+            MODE_RINGER_STREAMS_AFFECTED,
+            TEXT_AUTO_REPLACE,
+            TEXT_AUTO_CAPS,
+            TEXT_AUTO_PUNCTUATE,
+            TEXT_SHOW_PASSWORD,
+            AUTO_TIME,                  // moved to global
+            AUTO_TIME_ZONE,             // moved to global
+            TIME_12_24,
+            DATE_FORMAT,
+            DTMF_TONE_WHEN_DIALING,
+            DTMF_TONE_TYPE_WHEN_DIALING,
+            HEARING_AID,
+            TTY_MODE,
+            MASTER_MONO,
+            MASTER_BALANCE,
+            SOUND_EFFECTS_ENABLED,
+            HAPTIC_FEEDBACK_ENABLED,
+            POWER_SOUNDS_ENABLED,       // moved to global
+            DOCK_SOUNDS_ENABLED,        // moved to global
+            LOCKSCREEN_SOUNDS_ENABLED,
+            SHOW_WEB_SUGGESTIONS,
+            SIP_CALL_OPTIONS,
+            SIP_RECEIVE_CALLS,
+            POINTER_SPEED,
+            VIBRATE_WHEN_RINGING,
+            RINGTONE,
+            LOCK_TO_APP_ENABLED,
+            NOTIFICATION_SOUND,
+            ACCELEROMETER_ROTATION,
+            SHOW_BATTERY_PERCENT,
+            NOTIFICATION_VIBRATION_INTENSITY,
+            RING_VIBRATION_INTENSITY,
+            HAPTIC_FEEDBACK_INTENSITY,
+            DISPLAY_COLOR_MODE,
+            ALARM_ALERT,
+            NOTIFICATION_LIGHT_PULSE,
+        };
+
+        /**
+>>>>>>> fdf2db7aa613... input: hardware buttons lights integration
          * Keys we no longer back up under the current schema, but want to continue to
          * process when restoring historical backup datasets.
          *
@@ -4910,6 +4998,9 @@ public final class Settings {
             PRIVATE_SETTINGS.add(EGG_MODE);
             PRIVATE_SETTINGS.add(SHOW_BATTERY_PERCENT);
             PRIVATE_SETTINGS.add(DISPLAY_COLOR_MODE);
+            // New private settings.
+            PRIVATE_SETTINGS.add(BUTTON_BRIGHTNESS);
+            PRIVATE_SETTINGS.add(BUTTON_BRIGHTNESS_ENABLED);
         }
 
         /**

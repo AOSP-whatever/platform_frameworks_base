@@ -284,16 +284,34 @@ public class LightsService extends SystemService {
         }
 
         @Override
+<<<<<<< HEAD
         public void setBrightness(float brightness) {
+=======
+        public int getBrightness() {
+            return mBrightness;
+        }
+
+        @Override
+        public void setBrightness(int brightness) {
+>>>>>>> fdf2db7aa613... input: hardware buttons lights integration
             setBrightness(brightness, BRIGHTNESS_MODE_USER);
         }
 
         @Override
+<<<<<<< HEAD
         public void setBrightness(float brightness, int brightnessMode) {
             if (Float.isNaN(brightness)) {
                 Slog.w(TAG, "Brightness is not valid: " + brightness);
                 return;
             }
+=======
+        public void setBrightness(int brightness, int brightnessMode) {
+            if (brightness < 0) {
+                // Avoid setting invalid brightness.
+                brightness = 0;
+            }
+
+>>>>>>> fdf2db7aa613... input: hardware buttons lights integration
             synchronized (this) {
                 // LOW_PERSISTENCE cannot be manually set
                 if (brightnessMode == BRIGHTNESS_MODE_LOW_PERSISTENCE) {
@@ -323,6 +341,7 @@ public class LightsService extends SystemService {
                     int color = brightnessInt & 0x000000ff;
                     color = 0xff000000 | (color << 16) | (color << 8) | color;
                     setLightLocked(color, LIGHT_FLASH_NONE, 0, 0, brightnessMode);
+                    mBrightness = brightness;
                 }
             }
         }
@@ -461,6 +480,7 @@ public class LightsService extends SystemService {
         private int mMode;
         private int mOnMS;
         private int mOffMS;
+        private int mBrightness;
         private boolean mFlashing;
         private int mBrightnessMode;
         private int mLastBrightnessMode;

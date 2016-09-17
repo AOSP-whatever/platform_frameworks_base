@@ -1011,6 +1011,7 @@ public final class PowerManager {
     }
 
     /**
+<<<<<<< HEAD
      * Gets a float screen brightness setting.
      * @hide
      */
@@ -1021,6 +1022,36 @@ public final class PowerManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+=======
+     * Gets the minimum supported button brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the minimum value that can be set by the user.
+     * @hide
+     */
+    public int getMinimumButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingMinimum);
+    }
+
+    /**
+     * Gets the maximum supported button brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the maximum value that can be set by the user.
+     * @hide
+     */
+    public int getMaximumButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingMaximum);
+    }
+
+    /**
+     * Gets the default button brightness setting.
+     * @hide
+     */
+    public int getDefaultButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingDefault);
+>>>>>>> fdf2db7aa613... input: hardware buttons lights integration
     }
 
     /**
