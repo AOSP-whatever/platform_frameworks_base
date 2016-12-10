@@ -24,9 +24,11 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -151,6 +153,8 @@ public abstract class PanelViewController {
     protected final KeyguardStateController mKeyguardStateController;
     protected final SysuiStatusBarStateController mStatusBarStateController;
 
+    private GestureDetector mDoubleTapGestureListener;
+
     protected void onExpandingFinished() {
         mBar.onExpandingFinished();
     }
@@ -251,6 +255,17 @@ public abstract class PanelViewController {
                 .setY2(0.84f)
                 .build();
         mLatencyTracker = latencyTracker;
+
+        mDoubleTapGestureListener = new GestureDetector(context,
+                new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDoubleTap(MotionEvent event) {
+                final PowerManager pm = (PowerManager) context.getSystemService(
+                        Context.POWER_SERVICE);
+                pm.goToSleep(event.getEventTime());
+                return true;
+            }
+        });
         mBounceInterpolator = new BounceInterpolator();
         mFalsingManager = falsingManager;
         mDozeLog = dozeLog;
@@ -1317,6 +1332,11 @@ public abstract class PanelViewController {
                     endMotionEvent(event, x, y, false /* forceCancel */);
                     break;
             }
+
+            if (mStatusBarStateController.getState() == StatusBarState.KEYGUARD) {
+                mDoubleTapGestureListener.onTouchEvent(event);
+            }
+
             return !mGestureWaitForTouchSlop || mTracking;
         }
     }
