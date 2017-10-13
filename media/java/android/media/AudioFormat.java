@@ -539,6 +539,7 @@ public final class AudioFormat implements Parcelable {
         case ENCODING_E_AC3:
         case ENCODING_DTS:
         case ENCODING_DTS_HD:
+        case ENCODING_AAC_LC:
         case ENCODING_IEC61937:
             return true;
         default:
@@ -825,6 +826,7 @@ public final class AudioFormat implements Parcelable {
                 case ENCODING_E_AC3:
                 case ENCODING_DTS:
                 case ENCODING_DTS_HD:
+                case ENCODING_AAC_LC:
                 case ENCODING_IEC61937:
                 case ENCODING_AMRNB:
                 case ENCODING_AMRWB:
