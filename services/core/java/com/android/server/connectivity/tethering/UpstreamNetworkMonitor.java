@@ -428,7 +428,7 @@ public class UpstreamNetworkMonitor {
         public NetworkState ns = null;
     }
 
-    private static TypeStatePair findFirstAvailableUpstreamByType(
+    private TypeStatePair findFirstAvailableUpstreamByType(
             Iterable<NetworkState> netStates, Iterable<Integer> preferredTypes) {
         final TypeStatePair result = new TypeStatePair();
 
@@ -443,7 +443,9 @@ public class UpstreamNetworkMonitor {
             }
 
             for (NetworkState value : netStates) {
-                if (!nc.satisfiedByNetworkCapabilities(value.networkCapabilities)) {
+                if ( (cm()!= null && cm().getActiveNetworkInfo() != null &&
+                        type != (cm().getActiveNetworkInfo().getType())) ||
+                        !nc.satisfiedByNetworkCapabilities(value.networkCapabilities)) {
                     continue;
                 }
 
