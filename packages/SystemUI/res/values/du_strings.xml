@@ -118,4 +118,8 @@
     <string name="navigation_bar_height_tablets_landscape_title">Height (landscape)</string>
     <string name="navigation_bar_width_title">Width</string>
 
+    <!-- Reboot/Recovery QS tile -->
+    <string name="quick_settings_reboot_label">Reboot</string>
+    <string name="quick_settings_reboot_recovery_label">Recovery</string>
+
 </resources>
