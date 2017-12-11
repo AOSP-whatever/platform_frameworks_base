@@ -4581,7 +4581,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 "startActivityAsUser");
     }
 
-    public final int startActivityAsUserEmpty(IApplicationThread caller, String callingPackage,
+    final int startActivityAsUserEmpty(IApplicationThread caller, String callingPackage,
             Intent intent, String resolvedType, IBinder resultTo, String resultWho, int requestCode,
             int startFlags, ProfilerInfo profilerInfo, Bundle options, int userId) {
         ArrayList<String> pApps = options.getStringArrayList("start_empty_apps");
@@ -4590,33 +4590,25 @@ public class ActivityManagerService extends IActivityManager.Stub
             while (apps_itr.hasNext()) {
                 ProcessRecord empty_app = null;
                 String app_str = apps_itr.next();
-                boolean ign = false;
-                for(int i = mLruProcesses.size()-1 ; i >= 0 ; i--) {
-                    ProcessRecord r = mLruProcesses.get(i);
-                    if(r.processName.equals(app_str)) {
-                        ign = true;
-                        break;
-                    }
-                }
-                if (!ign) {
-                    synchronized (this) {
-                        Intent intent_l = null;
-                        try {
-                            intent_l = mContext.getPackageManager().getLaunchIntentForPackage(app_str);
-                            if (intent_l == null)
-                                continue;
-                            ActivityInfo aInfo = mStackSupervisor.resolveActivity(intent_l, null,
-                                                                              0, null, 0);
-                            if (aInfo == null)
-                                continue;
-                            empty_app = startProcessLocked(app_str, aInfo.applicationInfo, false, 0,
-                                                       "activity", null, false, false, true);
-                            if (empty_app != null)
-                                updateOomAdjLocked(empty_app, true);
-                        } catch (Exception e) {
-                            if (DEBUG_PROCESSES)
-                                Slog.w(TAG, "Exception raised trying to start app as empty " + e);
-                        }
+                if (app_str == null)
+                    continue;
+                synchronized (this) {
+                    Intent intent_l = null;
+                    try {
+                        intent_l = mContext.getPackageManager().getLaunchIntentForPackage(app_str);
+                        if (intent_l == null)
+                            continue;
+                        ActivityInfo aInfo = mStackSupervisor.resolveActivity(intent_l, null,
+                                                                          0, null, 0);
+                        if (aInfo == null)
+                            continue;
+                        empty_app = startProcessLocked(app_str, aInfo.applicationInfo, false, 0,
+                                                   "activity", null, false, false, true);
+                        if (empty_app != null)
+                            updateOomAdjLocked(empty_app, true);
+                    } catch (Exception e) {
+                        if (DEBUG_PROCESSES)
+                            Slog.w(TAG, "Exception raised trying to start app as empty " + e);
                     }
                 }
             }
