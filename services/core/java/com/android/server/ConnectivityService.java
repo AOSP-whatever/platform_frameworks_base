@@ -26,6 +26,7 @@ import static android.net.ConnectivityManager.isNetworkTypeValid;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_FOREGROUND;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_MMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
@@ -4400,7 +4401,9 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
     private void updateClat(LinkProperties newLp, LinkProperties oldLp, NetworkAgentInfo nai) {
         final boolean wasRunningClat = nai.clatd != null && nai.clatd.isStarted();
-        final boolean shouldRunClat = Nat464Xlat.requiresClat(nai);
+        final boolean shouldRunClat = Nat464Xlat.requiresClat(nai) &&
+           ( nai.networkCapabilities.hasCapability(NET_CAPABILITY_INTERNET) ||
+             nai.networkCapabilities.hasCapability(NET_CAPABILITY_MMS) );
 
         if (!wasRunningClat && shouldRunClat) {
             nai.clatd = new Nat464Xlat(mContext, mNetd, mTrackerHandler, nai);
