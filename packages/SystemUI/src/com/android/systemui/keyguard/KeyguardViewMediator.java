@@ -1590,10 +1590,6 @@ public class KeyguardViewMediator extends SystemUI {
         mUpdateMonitor.clearFailedUnlockAttempts();
         mUpdateMonitor.clearFingerprintRecognized();
 
-        if (mGoingToSleep) {
-            Log.i(TAG, "Device is going to sleep, aborting keyguardDone");
-            return;
-        }
         if (mExitSecureCallback != null) {
             try {
                 mExitSecureCallback.onKeyguardExitResult(true /* authenciated */);
