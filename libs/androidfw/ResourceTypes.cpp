@@ -456,6 +456,22 @@ status_t ResStringPool::setTo(const void* data, size_t size, bool copyData)
 
     uninit();
 
+    // The chunk must be at least the size of the string pool header.
+    if (size < sizeof(ResStringPool_header)) {
+        LOG_ALWAYS_FATAL("Bad string block: data size %zu is too small to be a string block", size);
+        return (mError=BAD_TYPE);
+    }
+
+    // The data is at least as big as a ResChunk_header, so we can safely validate the other
+    // header fields.
+    // `data + size` is safe because the source of `size` comes from the kernel/filesystem.
+    if (validate_chunk(reinterpret_cast<const ResChunk_header*>(data), sizeof(ResStringPool_header),
+                       reinterpret_cast<const uint8_t*>(data) + size,
+                       "ResStringPool_header") != NO_ERROR) {
+        LOG_ALWAYS_FATAL("Bad string block: malformed block dimensions");
+        return (mError=BAD_TYPE);
+    }
+
     const bool notDeviceEndian = htods(0xf0) != 0xf0;
 
     if (copyData || notDeviceEndian) {
@@ -467,6 +483,8 @@ status_t ResStringPool::setTo(const void* data, size_t size, bool copyData)
         data = mOwnedData;
     }
 
+    // The size has been checked, so it is safe to read the data in the ResStringPool_header
+    // data structure.
     mHeader = (const ResStringPool_header*)data;
 
     if (notDeviceEndian) {
@@ -727,11 +745,42 @@ const char16_t* ResStringPool::stringAt(size_t idx, size_t* u16len) const
                 if ((uint32_t)(u8str+u8len-strings) < mStringPoolSize) {
                     AutoMutex lock(mDecodeLock);
 
+                    if (mCache != NULL && mCache[idx] != NULL) {
+                        return mCache[idx];
+                    }
+
+                    // Retrieve the actual length of the utf8 string if the
+                    // encoded length was truncated
+                    if (stringDecodeAt(idx, u8str, u8len, &u8len) == NULL) {
+                        return NULL;
+                    }
+
+                    // Since AAPT truncated lengths longer than 0x7FFF, check
+                    // that the bits that remain after truncation at least match
+                    // the bits of the actual length
+                    ssize_t actualLen = utf8_to_utf16_length(u8str, u8len);
+                    if (actualLen < 0 || ((size_t)actualLen & 0x7FFF) != *u16len) {
+                        ALOGW("Bad string block: string #%lld decoded length is not correct "
+                                "%lld vs %llu\n",
+                                (long long)idx, (long long)actualLen, (long long)*u16len);
+                        return NULL;
+                    }
+
+                    *u16len = (size_t) actualLen;
+                    char16_t *u16str = (char16_t *)calloc(*u16len+1, sizeof(char16_t));
+                    if (!u16str) {
+                        ALOGW("No memory when trying to allocate decode cache for string #%d\n",
+                                (int)idx);
+                        return NULL;
+                    }
+
+                    utf8_to_utf16(u8str, u8len, u16str, *u16len + 1);
+
                     if (mCache == NULL) {
 #ifndef __ANDROID__
                         if (kDebugStringPoolNoisy) {
                             ALOGI("CREATING STRING CACHE OF %zu bytes",
-                                    mHeader->stringCount*sizeof(char16_t**));
+                                  mHeader->stringCount*sizeof(char16_t**));
                         }
 #else
                         // We do not want to be in this case when actually running Android.
@@ -741,41 +790,15 @@ const char16_t* ResStringPool::stringAt(size_t idx, size_t* u16len) const
                         mCache = (char16_t**)calloc(mHeader->stringCount, sizeof(char16_t*));
                         if (mCache == NULL) {
                             ALOGW("No memory trying to allocate decode cache table of %d bytes\n",
-                                    (int)(mHeader->stringCount*sizeof(char16_t**)));
+                                  (int)(mHeader->stringCount*sizeof(char16_t**)));
                             return NULL;
                         }
                     }
 
-                    if (mCache[idx] != NULL) {
-                        return mCache[idx];
-                    }
-
-                    ssize_t actualLen = utf8_to_utf16_length(u8str, u8len);
-                    if (actualLen < 0 || (size_t)actualLen != *u16len) {
-                        ALOGW("Bad string block: string #%lld decoded length is not correct "
-                                "%lld vs %llu\n",
-                                (long long)idx, (long long)actualLen, (long long)*u16len);
-                        return NULL;
-                    }
-
-                    // Reject malformed (non null-terminated) strings
-                    if (u8str[u8len] != 0x00) {
-                        ALOGW("Bad string block: string #%d is not null-terminated",
-                              (int)idx);
-                        return NULL;
-                    }
-
-                    char16_t *u16str = (char16_t *)calloc(*u16len+1, sizeof(char16_t));
-                    if (!u16str) {
-                        ALOGW("No memory when trying to allocate decode cache for string #%d\n",
-                                (int)idx);
-                        return NULL;
-                    }
-
                     if (kDebugStringPoolNoisy) {
-                        ALOGI("Caching UTF8 string: %s", u8str);
+                      ALOGI("Caching UTF8 string: %s", u8str);
                     }
-                    utf8_to_utf16(u8str, u8len, u16str, *u16len + 1);
+
                     mCache[idx] = u16str;
                     return u16str;
                 } else {
@@ -812,13 +835,8 @@ const char* ResStringPool::string8At(size_t idx, size_t* outLen) const
             *outLen = encLen;
 
             if ((uint32_t)(str+encLen-strings) < mStringPoolSize) {
-                // Reject malformed (non null-terminated) strings
-                if (str[encLen] != 0x00) {
-                    ALOGW("Bad string block: string #%d is not null-terminated",
-                          (int)idx);
-                    return NULL;
-                }
-              return (const char*)str;
+                return stringDecodeAt(idx, str, encLen, outLen);
+
             } else {
                 ALOGW("Bad string block: string #%d extends to %d, past end at %d\n",
                         (int)idx, (int)(str+encLen-strings), (int)mStringPoolSize);
@@ -829,6 +847,38 @@ const char* ResStringPool::string8At(size_t idx, size_t* outLen) const
                     (int)(mStringPoolSize*sizeof(uint16_t)));
         }
     }
+    return NULL;
+}
+
+/**
+ * AAPT incorrectly writes a truncated string length when the string size
+ * exceeded the maximum possible encode length value (0x7FFF). To decode a
+ * truncated length, iterate through length values that end in the encode length
+ * bits. Strings that exceed the maximum encode length are not placed into
+ * StringPools in AAPT2.
+ **/
+const char* ResStringPool::stringDecodeAt(size_t idx, const uint8_t* str,
+                                          const size_t encLen, size_t* outLen) const {
+    const uint8_t* strings = (uint8_t*)mStrings;
+
+    size_t i = 0, end = encLen;
+    while ((uint32_t)(str+end-strings) < mStringPoolSize) {
+        if (str[end] == 0x00) {
+            if (i != 0) {
+                ALOGW("Bad string block: string #%d is truncated (actual length is %d)",
+                      (int)idx, (int)end);
+            }
+
+            *outLen = end;
+            return (const char*)str;
+        }
+
+        end = (++i << (sizeof(uint8_t) * 8 * 2 - 1)) | encLen;
+    }
+
+    // Reject malformed (non null-terminated) strings
+    ALOGW("Bad string block: string #%d is not null-terminated",
+          (int)idx);
     return NULL;
 }
 
@@ -3454,13 +3504,14 @@ struct ResTable::PackageGroup
 {
     PackageGroup(
             ResTable* _owner, const String16& _name, uint32_t _id,
-            bool appAsLib, bool _isSystemAsset)
+            bool appAsLib, bool _isSystemAsset, bool _isDynamic)
         : owner(_owner)
         , name(_name)
         , id(_id)
         , largestTypeId(0)
         , dynamicRefTable(static_cast<uint8_t>(_id), appAsLib)
         , isSystemAsset(_isSystemAsset)
+        , isDynamic(_isDynamic)
     { }
 
     ~PackageGroup() {
@@ -3564,6 +3615,7 @@ struct ResTable::PackageGroup
     // If the package group comes from a system asset. Used in
     // determining non-system locales.
     const bool                      isSystemAsset;
+    const bool isDynamic;
 };
 
 ResTable::Theme::Theme(const ResTable& table)
@@ -3932,6 +3984,11 @@ inline ssize_t ResTable::getResourcePackageIndex(uint32_t resID) const
     return ((ssize_t)mPackageMap[Res_GETPACKAGE(resID)+1])-1;
 }
 
+inline ssize_t ResTable::getResourcePackageIndexFromPackage(uint8_t packageID) const
+{
+    return ((ssize_t)mPackageMap[packageID])-1;
+}
+
 status_t ResTable::add(const void* data, size_t size, const int32_t cookie, bool copyData) {
     return addInternal(data, size, NULL, 0, false, cookie, copyData);
 }
@@ -3987,7 +4044,7 @@ status_t ResTable::add(ResTable* src, bool isSystemAsset)
     for (size_t i=0; i < src->mPackageGroups.size(); i++) {
         PackageGroup* srcPg = src->mPackageGroups[i];
         PackageGroup* pg = new PackageGroup(this, srcPg->name, srcPg->id,
-                false /* appAsLib */, isSystemAsset || srcPg->isSystemAsset);
+                false /* appAsLib */, isSystemAsset || srcPg->isSystemAsset, srcPg->isDynamic);
         for (size_t j=0; j<srcPg->packages.size(); j++) {
             pg->packages.add(srcPg->packages[j]);
         }
@@ -6227,6 +6284,68 @@ bool ResTable::getResourceFlags(uint32_t resID, uint32_t* outFlags) const {
     return true;
 }
 
+bool ResTable::isPackageDynamic(uint8_t packageID) const {
+  if (mError != NO_ERROR) {
+      return false;
+  }
+  if (packageID == 0) {
+      ALOGW("Invalid package number 0x%08x", packageID);
+      return false;
+  }
+
+  const ssize_t p = getResourcePackageIndexFromPackage(packageID);
+
+  if (p < 0) {
+      ALOGW("Unknown package number 0x%08x", packageID);
+      return false;
+  }
+
+  const PackageGroup* const grp = mPackageGroups[p];
+  if (grp == NULL) {
+      ALOGW("Bad identifier for package number 0x%08x", packageID);
+      return false;
+  }
+
+  return grp->isDynamic;
+}
+
+bool ResTable::isResourceDynamic(uint32_t resID) const {
+    if (mError != NO_ERROR) {
+        return false;
+    }
+
+    const ssize_t p = getResourcePackageIndex(resID);
+    const int t = Res_GETTYPE(resID);
+    const int e = Res_GETENTRY(resID);
+
+    if (p < 0) {
+        if (Res_GETPACKAGE(resID)+1 == 0) {
+            ALOGW("No package identifier for resource number 0x%08x", resID);
+        } else {
+            ALOGW("No known package for resource number 0x%08x", resID);
+        }
+        return false;
+    }
+    if (t < 0) {
+        ALOGW("No type identifier for resource number 0x%08x", resID);
+        return false;
+    }
+
+    const PackageGroup* const grp = mPackageGroups[p];
+    if (grp == NULL) {
+        ALOGW("Bad identifier for resource number 0x%08x", resID);
+        return false;
+    }
+
+    Entry entry;
+    status_t err = getEntry(grp, t, e, NULL, &entry);
+    if (err != NO_ERROR) {
+        return false;
+    }
+
+    return grp->isDynamic;
+}
+
 static bool keyCompare(const ResTable_sparseTypeEntry& entry , uint16_t entryIdx) {
   return dtohs(entry.idx) < entryIdx;
 }
@@ -6470,12 +6589,14 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
         id = targetPackageId;
     }
 
+    bool isDynamic = false;
     if (id >= 256) {
         LOG_ALWAYS_FATAL("Package id out of range");
         return NO_ERROR;
     } else if (id == 0 || (id == 0x7f && appAsLib) || isSystemAsset) {
         // This is a library or a system asset, so assign an ID
         id = mNextPackageId++;
+        isDynamic = true;
     }
 
     PackageGroup* group = NULL;
@@ -6503,10 +6624,9 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
     size_t idx = mPackageMap[id];
     if (idx == 0) {
         idx = mPackageGroups.size() + 1;
-
         char16_t tmpName[sizeof(pkg->name)/sizeof(pkg->name[0])];
         strcpy16_dtoh(tmpName, pkg->name, sizeof(pkg->name)/sizeof(pkg->name[0]));
-        group = new PackageGroup(this, String16(tmpName), id, appAsLib, isSystemAsset);
+        group = new PackageGroup(this, String16(tmpName), id, appAsLib, isSystemAsset, isDynamic);
         if (group == NULL) {
             delete package;
             return (mError=NO_MEMORY);

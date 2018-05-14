@@ -17,7 +17,6 @@
 package com.android.systemui.statusbar;
 
 import static com.android.systemui.statusbar.phone.NotificationIconContainer.IconState.NO_VALUE;
-import static com.android.systemui.statusbar.phone.NotificationIconContainer.OVERFLOW_EARLY_AMOUNT;
 
 import android.content.Context;
 import android.content.res.Configuration;
@@ -26,6 +25,7 @@ import android.graphics.Rect;
 import android.os.SystemProperties;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.MathUtils;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
@@ -58,6 +58,8 @@ public class NotificationShelf extends ActivatableNotificationView implements
             = SystemProperties.getBoolean("debug.icon_scroll_animations", true);
     private static final int TAG_CONTINUOUS_CLIPPING = R.id.continuous_clipping_tag;
     private static final String TAG = "NotificationShelf";
+    private static final long SHELF_IN_TRANSLATION_DURATION = 200;
+
     private ViewInvertHelper mViewInvertHelper;
     private boolean mDark;
     private NotificationIconContainer mShelfIcons;
@@ -65,6 +67,7 @@ public class NotificationShelf extends ActivatableNotificationView implements
     private int[] mTmp = new int[2];
     private boolean mHideBackground;
     private int mIconAppearTopPadding;
+    private int mShelfAppearTranslation;
     private int mStatusBarHeight;
     private int mStatusBarPaddingStart;
     private AmbientState mAmbientState;
@@ -120,6 +123,7 @@ public class NotificationShelf extends ActivatableNotificationView implements
         mStatusBarHeight = res.getDimensionPixelOffset(R.dimen.status_bar_height);
         mStatusBarPaddingStart = res.getDimensionPixelOffset(R.dimen.status_bar_padding_start);
         mPaddingBetweenElements = res.getDimensionPixelSize(R.dimen.notification_divider_height);
+        mShelfAppearTranslation = res.getDimensionPixelSize(R.dimen.shelf_appear_translation);
 
         ViewGroup.LayoutParams layoutParams = getLayoutParams();
         layoutParams.height = res.getDimensionPixelOffset(R.dimen.notification_shelf_height);
@@ -151,6 +155,22 @@ public class NotificationShelf extends ActivatableNotificationView implements
         updateInteractiveness();
     }
 
+    public void fadeInTranslating() {
+        float translation = mShelfIcons.getTranslationY();
+        mShelfIcons.setTranslationY(translation - mShelfAppearTranslation);
+        mShelfIcons.setAlpha(0);
+        mShelfIcons.animate()
+                .setInterpolator(Interpolators.DECELERATE_QUINT)
+                .translationY(translation)
+                .setDuration(SHELF_IN_TRANSLATION_DURATION)
+                .start();
+        mShelfIcons.animate()
+                .alpha(1)
+                .setInterpolator(Interpolators.LINEAR)
+                .setDuration(SHELF_IN_TRANSLATION_DURATION)
+                .start();
+    }
+
     @Override
     protected View getContentView() {
         return mShelfIcons;
@@ -175,12 +195,14 @@ public class NotificationShelf extends ActivatableNotificationView implements
             float viewEnd = lastViewState.yTranslation + lastViewState.height;
             mShelfState.copyFrom(lastViewState);
             mShelfState.height = getIntrinsicHeight();
-            mShelfState.yTranslation = Math.max(Math.min(viewEnd, maxShelfEnd) - mShelfState.height,
+
+            float awakenTranslation = Math.max(Math.min(viewEnd, maxShelfEnd) - mShelfState.height,
                     getFullyClosedTranslation());
+            float darkTranslation = mAmbientState.getDarkTopPadding();
+            float yRatio = mAmbientState.hasPulsingNotifications() ?
+                    0 : mAmbientState.getDarkAmount();
+            mShelfState.yTranslation = MathUtils.lerp(awakenTranslation, darkTranslation, yRatio);
             mShelfState.zTranslation = ambientState.getBaseZHeight();
-            if (mAmbientState.isDark() && !mAmbientState.hasPulsingNotifications()) {
-                mShelfState.yTranslation = mAmbientState.getDarkTopPadding();
-            }
             float openedAmount = (mShelfState.yTranslation - getFullyClosedTranslation())
                     / (getIntrinsicHeight() * 2);
             openedAmount = Math.min(1.0f, openedAmount);
@@ -385,13 +407,14 @@ public class NotificationShelf extends ActivatableNotificationView implements
         boolean needsContinuousClipping = ViewState.isAnimatingY(icon) && !mAmbientState.isDark();
         boolean isContinuousClipping = icon.getTag(TAG_CONTINUOUS_CLIPPING) != null;
         if (needsContinuousClipping && !isContinuousClipping) {
+            final ViewTreeObserver observer = icon.getViewTreeObserver();
             ViewTreeObserver.OnPreDrawListener predrawListener =
                     new ViewTreeObserver.OnPreDrawListener() {
                         @Override
                         public boolean onPreDraw() {
                             boolean animatingY = ViewState.isAnimatingY(icon);
-                            if (!animatingY || !icon.isAttachedToWindow()) {
-                                icon.getViewTreeObserver().removeOnPreDrawListener(this);
+                            if (!animatingY) {
+                                observer.removeOnPreDrawListener(this);
                                 icon.setTag(TAG_CONTINUOUS_CLIPPING, null);
                                 return true;
                             }
@@ -399,7 +422,20 @@ public class NotificationShelf extends ActivatableNotificationView implements
                             return true;
                         }
                     };
-            icon.getViewTreeObserver().addOnPreDrawListener(predrawListener);
+            observer.addOnPreDrawListener(predrawListener);
+            icon.addOnAttachStateChangeListener(new OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    if (v == icon) {
+                        observer.removeOnPreDrawListener(predrawListener);
+                        icon.setTag(TAG_CONTINUOUS_CLIPPING, null);
+                    }
+                }
+            });
             icon.setTag(TAG_CONTINUOUS_CLIPPING, predrawListener);
         }
     }
@@ -555,7 +591,9 @@ public class NotificationShelf extends ActivatableNotificationView implements
             iconState.translateContent = false;
         }
         float transitionAmount;
-        if (isLastChild || !USE_ANIMATIONS_WHEN_OPENING || iconState.useFullTransitionAmount
+        if (mAmbientState.getDarkAmount() > 0 && !row.isInShelf()) {
+            transitionAmount = mAmbientState.isFullyDark() ? 1 : 0;
+        } else if (isLastChild || !USE_ANIMATIONS_WHEN_OPENING || iconState.useFullTransitionAmount
                 || iconState.useLinearTransitionAmount) {
             transitionAmount = iconTransitionAmount;
         } else {

@@ -1034,4 +1034,52 @@ i     * Verify that a call to cancel WPS immediately returns a failure.
         verifyNoMoreInteractions(mWifiService);
     }
 
+    /**
+     * Verify that a successful call properly returns true.
+     */
+    @Test
+    public void testSetWifiApConfigurationSuccessReturnsTrue() throws Exception {
+        WifiConfiguration apConfig = new WifiConfiguration();
+
+        when(mWifiService.setWifiApConfiguration(eq(apConfig), eq(TEST_PACKAGE_NAME)))
+                .thenReturn(true);
+        assertTrue(mWifiManager.setWifiApConfiguration(apConfig));
+    }
+
+    /**
+     * Verify that a failed call properly returns false.
+     */
+    @Test
+    public void testSetWifiApConfigurationFailureReturnsFalse() throws Exception {
+        WifiConfiguration apConfig = new WifiConfiguration();
+
+        when(mWifiService.setWifiApConfiguration(eq(apConfig), eq(TEST_PACKAGE_NAME)))
+                .thenReturn(false);
+        assertFalse(mWifiManager.setWifiApConfiguration(apConfig));
+    }
+
+    /**
+     * Verify Exceptions are rethrown when underlying calls to WifiService throw exceptions.
+     */
+    @Test
+    public void testSetWifiApConfigurationRethrowsException() throws Exception {
+        doThrow(new SecurityException()).when(mWifiService).setWifiApConfiguration(any(), any());
+
+        try {
+            mWifiManager.setWifiApConfiguration(new WifiConfiguration());
+            fail("setWifiApConfiguration should rethrow Exceptions from WifiService");
+        } catch (SecurityException e) { }
+    }
+
+    /**
+     * Check the call to startScan calls WifiService.
+     */
+    @Test
+    public void testStartScan() throws Exception {
+        when(mWifiService.startScan(TEST_PACKAGE_NAME)).thenReturn(true);
+        assertTrue(mWifiManager.startScan());
+
+        when(mWifiService.startScan(TEST_PACKAGE_NAME)).thenReturn(false);
+        assertFalse(mWifiManager.startScan());
+    }
 }

@@ -80,6 +80,7 @@ import android.view.MenuItem;
 import android.view.textclassifier.TextClassificationManager;
 import android.view.textclassifier.TextClassifier;
 import android.view.textclassifier.TextLinks;
+import android.view.textclassifier.TextLinksParams;
 import android.widget.espresso.CustomViewActions.RelativeCoordinatesProvider;
 
 import com.android.frameworks.coretests.R;
@@ -317,40 +318,52 @@ public class TextViewActivityTest {
         onView(withId(R.id.textview)).perform(clickOnTextAtIndex(position));
         sleepForFloatingToolbarPopup();
         assertFloatingToolbarIsDisplayed();
-
     }
 
     @Test
     public void testToolbarAppearsAfterLinkClickedNonselectable() throws Throwable {
-        TextLinks.TextLink textLink = addLinkifiedTextToTextView(R.id.nonselectable_textview);
-        int position = (textLink.getStart() + textLink.getEnd()) / 2;
+        final TextView textView = mActivity.findViewById(R.id.nonselectable_textview);
+        final TextLinks.TextLink textLink = addLinkifiedTextToTextView(R.id.nonselectable_textview);
+        final int position = (textLink.getStart() + textLink.getEnd()) / 2;
+
         onView(withId(R.id.nonselectable_textview)).perform(clickOnTextAtIndex(position));
         sleepForFloatingToolbarPopup();
         assertFloatingToolbarIsDisplayed();
+        assertTrue(textView.hasSelection());
+
+        // toggle
+        onView(withId(R.id.nonselectable_textview)).perform(clickOnTextAtIndex(position));
+        sleepForFloatingToolbarPopup();
+        assertFalse(textView.hasSelection());
+
+        onView(withId(R.id.nonselectable_textview)).perform(clickOnTextAtIndex(position));
+        sleepForFloatingToolbarPopup();
+        assertFloatingToolbarIsDisplayed();
+        assertTrue(textView.hasSelection());
+
+        // click outside
+        onView(withId(R.id.nonselectable_textview)).perform(clickOnTextAtIndex(0));
+        sleepForFloatingToolbarPopup();
+        assertFalse(textView.hasSelection());
     }
 
     @Test
     public void testSelectionRemovedWhenNonselectableTextLosesFocus() throws Throwable {
-        // Add a link to both selectable and nonselectable TextViews:
-        TextLinks.TextLink textLink = addLinkifiedTextToTextView(R.id.textview);
-        int selectablePosition = (textLink.getStart() + textLink.getEnd()) / 2;
-        textLink = addLinkifiedTextToTextView(R.id.nonselectable_textview);
-        int nonselectablePosition = (textLink.getStart() + textLink.getEnd()) / 2;
-        TextView selectableTextView = mActivity.findViewById(R.id.textview);
-        TextView nonselectableTextView = mActivity.findViewById(R.id.nonselectable_textview);
+        final TextLinks.TextLink textLink = addLinkifiedTextToTextView(R.id.nonselectable_textview);
+        final int position = (textLink.getStart() + textLink.getEnd()) / 2;
+        final TextView textView = mActivity.findViewById(R.id.nonselectable_textview);
+        mActivityRule.runOnUiThread(() -> textView.setFocusableInTouchMode(true));
 
-        onView(withId(R.id.nonselectable_textview))
-                .perform(clickOnTextAtIndex(nonselectablePosition));
+        onView(withId(R.id.nonselectable_textview)).perform(clickOnTextAtIndex(position));
         sleepForFloatingToolbarPopup();
         assertFloatingToolbarIsDisplayed();
-        assertTrue(nonselectableTextView.hasSelection());
+        assertTrue(textView.hasSelection());
 
-        onView(withId(R.id.textview)).perform(clickOnTextAtIndex(selectablePosition));
+        mActivityRule.runOnUiThread(() -> textView.clearFocus());
+        mInstrumentation.waitForIdleSync();
         sleepForFloatingToolbarPopup();
-        assertFloatingToolbarIsDisplayed();
 
-        assertTrue(selectableTextView.hasSelection());
-        assertFalse(nonselectableTextView.hasSelection());
+        assertFalse(textView.hasSelection());
     }
 
     @Test
@@ -381,8 +394,12 @@ public class TextViewActivityTest {
                 mActivity.getSystemService(TextClassificationManager.class);
         TextClassifier textClassifier = textClassificationManager.getTextClassifier();
         Spannable content = new SpannableString("Call me at +19148277737");
-        TextLinks links = textClassifier.generateLinks(content);
-        links.apply(content, TextLinks.APPLY_STRATEGY_REPLACE, null, false /* allowPrefix */);
+        TextLinks.Request request = new TextLinks.Request.Builder(content).build();
+        TextLinks links = textClassifier.generateLinks(request);
+        TextLinksParams applyParams = new TextLinksParams.Builder()
+                .setApplyStrategy(TextLinks.APPLY_STRATEGY_REPLACE)
+                .build();
+        applyParams.apply(content, links);
 
         mActivityRule.runOnUiThread(() -> {
             textView.setText(content);

@@ -293,11 +293,16 @@ public final class ColorDisplayService extends SystemService
             mColorMatrixAnimator.cancel();
         }
 
-        setCoefficientMatrix(getContext(), mode == ColorDisplayController.COLOR_MODE_SATURATED);
+        setCoefficientMatrix(getContext(), DisplayTransformManager.isColorModeNative(mode));
         setMatrix(mController.getColorTemperature(), mMatrixNight);
 
         final DisplayTransformManager dtm = getLocalService(DisplayTransformManager.class);
         dtm.setColorMode(mode, mIsActivated ? mMatrixNight : MATRIX_IDENTITY);
+    }
+
+    @Override
+    public void onAccessibilityTransformChanged(boolean state) {
+        onDisplayColorModeChanged(mController.getColorMode());
     }
 
     /**

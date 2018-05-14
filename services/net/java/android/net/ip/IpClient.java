@@ -16,6 +16,7 @@
 
 package android.net.ip;
 
+import com.android.internal.util.HexDump;
 import com.android.internal.util.MessageUtils;
 import com.android.internal.util.WakeupMessage;
 
@@ -40,6 +41,7 @@ import android.net.util.MultinetworkPolicyTracker;
 import android.net.util.NetdService;
 import android.net.util.NetworkConstants;
 import android.net.util.SharedLog;
+import android.os.ConditionVariable;
 import android.os.INetworkManagementService;
 import android.os.Message;
 import android.os.RemoteException;
@@ -141,6 +143,12 @@ public class IpClient extends StateMachine {
         // Install an APF program to filter incoming packets.
         public void installPacketFilter(byte[] filter) {}
 
+        // Asynchronously read back the APF program & data buffer from the wifi driver.
+        // Due to Wifi HAL limitations, the current implementation only supports dumping the entire
+        // buffer. In response to this request, the driver returns the data buffer asynchronously
+        // by sending an IpClient#EVENT_READ_PACKET_FILTER_COMPLETE message.
+        public void startReadPacketFilter() {}
+
         // If multicast filtering cannot be accomplished with APF, this function will be called to
         // actuate multicast filtering using another means.
         public void setFallbackMulticastFilter(boolean enabled) {}
@@ -148,6 +156,28 @@ public class IpClient extends StateMachine {
         // Enabled/disable Neighbor Discover offload functionality. This is
         // called, for example, whenever 464xlat is being started or stopped.
         public void setNeighborDiscoveryOffload(boolean enable) {}
+    }
+
+    public static class WaitForProvisioningCallback extends Callback {
+        private final ConditionVariable mCV = new ConditionVariable();
+        private LinkProperties mCallbackLinkProperties;
+
+        public LinkProperties waitForProvisioning() {
+            mCV.block();
+            return mCallbackLinkProperties;
+        }
+
+        @Override
+        public void onProvisioningSuccess(LinkProperties newLp) {
+            mCallbackLinkProperties = newLp;
+            mCV.open();
+        }
+
+        @Override
+        public void onProvisioningFailure(LinkProperties newLp) {
+            mCallbackLinkProperties = null;
+            mCV.open();
+        }
     }
 
     // Use a wrapper class to log in order to ensure complete and detailed
@@ -225,6 +255,11 @@ public class IpClient extends StateMachine {
             log("installPacketFilter(byte[" + filter.length + "])");
         }
         @Override
+        public void startReadPacketFilter() {
+            mCallback.startReadPacketFilter();
+            log("startReadPacketFilter()");
+        }
+        @Override
         public void setFallbackMulticastFilter(boolean enabled) {
             mCallback.setFallbackMulticastFilter(enabled);
             log("setFallbackMulticastFilter(" + enabled + ")");
@@ -278,6 +313,11 @@ public class IpClient extends StateMachine {
 
             public Builder withoutIPv6() {
                 mConfig.mEnableIPv6 = false;
+                return this;
+            }
+
+            public Builder withoutMultinetworkPolicyTracker() {
+                mConfig.mUsingMultinetworkPolicyTracker = false;
                 return this;
             }
 
@@ -343,6 +383,7 @@ public class IpClient extends StateMachine {
 
         /* package */ boolean mEnableIPv4 = true;
         /* package */ boolean mEnableIPv6 = true;
+        /* package */ boolean mUsingMultinetworkPolicyTracker = true;
         /* package */ boolean mUsingIpReachabilityMonitor = true;
         /* package */ int mRequestedPreDhcpActionMs;
         /* package */ InitialConfiguration mInitialConfig;
@@ -374,6 +415,7 @@ public class IpClient extends StateMachine {
             return new StringJoiner(", ", getClass().getSimpleName() + "{", "}")
                     .add("mEnableIPv4: " + mEnableIPv4)
                     .add("mEnableIPv6: " + mEnableIPv6)
+                    .add("mUsingMultinetworkPolicyTracker: " + mUsingMultinetworkPolicyTracker)
                     .add("mUsingIpReachabilityMonitor: " + mUsingIpReachabilityMonitor)
                     .add("mRequestedPreDhcpActionMs: " + mRequestedPreDhcpActionMs)
                     .add("mInitialConfig: " + mInitialConfig)
@@ -529,6 +571,7 @@ public class IpClient extends StateMachine {
     private static final int CMD_SET_MULTICAST_FILTER             = 9;
     private static final int EVENT_PROVISIONING_TIMEOUT           = 10;
     private static final int EVENT_DHCPACTION_TIMEOUT             = 11;
+    private static final int EVENT_READ_PACKET_FILTER_COMPLETE    = 12;
 
     private static final int MAX_LOG_RECORDS = 500;
     private static final int MAX_PACKET_RECORDS = 100;
@@ -559,7 +602,6 @@ public class IpClient extends StateMachine {
     private final NetlinkTracker mNetlinkTracker;
     private final WakeupMessage mProvisioningTimeoutAlarm;
     private final WakeupMessage mDhcpActionTimeoutAlarm;
-    private final MultinetworkPolicyTracker mMultinetworkPolicyTracker;
     private final SharedLog mLog;
     private final LocalLog mConnectivityPacketLog;
     private final MessageHandlingLogger mMsgStateLogger;
@@ -573,6 +615,7 @@ public class IpClient extends StateMachine {
      */
     private LinkProperties mLinkProperties;
     private ProvisioningConfiguration mConfiguration;
+    private MultinetworkPolicyTracker mMultinetworkPolicyTracker;
     private IpReachabilityMonitor mIpReachabilityMonitor;
     private DhcpClient mDhcpClient;
     private DhcpResults mDhcpResults;
@@ -581,6 +624,14 @@ public class IpClient extends StateMachine {
     private ApfFilter mApfFilter;
     private boolean mMulticastFiltering;
     private long mStartTimeMillis;
+
+    /**
+     * Reading the snapshot is an asynchronous operation initiated by invoking
+     * Callback.startReadPacketFilter() and completed when the WiFi Service responds with an
+     * EVENT_READ_PACKET_FILTER_COMPLETE message. The mApfDataSnapshotComplete condition variable
+     * signals when a new snapshot is ready.
+     */
+    private final ConditionVariable mApfDataSnapshotComplete = new ConditionVariable();
 
     public static class Dependencies {
         public INetworkManagementService getNMS() {
@@ -685,9 +736,6 @@ public class IpClient extends StateMachine {
         mLinkProperties = new LinkProperties();
         mLinkProperties.setInterfaceName(mInterfaceName);
 
-        mMultinetworkPolicyTracker = new MultinetworkPolicyTracker(mContext, getHandler(),
-                () -> { mLog.log("OBSERVED AvoidBadWifi changed"); });
-
         mProvisioningTimeoutAlarm = new WakeupMessage(mContext, getHandler(),
                 mTag + ".EVENT_PROVISIONING_TIMEOUT", EVENT_PROVISIONING_TIMEOUT);
         mDhcpActionTimeoutAlarm = new WakeupMessage(mContext, getHandler(),
@@ -719,8 +767,6 @@ public class IpClient extends StateMachine {
         } catch (RemoteException e) {
             logError("Couldn't register NetlinkTracker: %s", e);
         }
-
-        mMultinetworkPolicyTracker.start();
     }
 
     private void stopStateMachineUpdaters() {
@@ -729,8 +775,6 @@ public class IpClient extends StateMachine {
         } catch (RemoteException e) {
             logError("Couldn't unregister NetlinkTracker: %s", e);
         }
-
-        mMultinetworkPolicyTracker.shutdown();
     }
 
     @Override
@@ -800,6 +844,10 @@ public class IpClient extends StateMachine {
         sendMessage(EVENT_PRE_DHCP_ACTION_COMPLETE);
     }
 
+    public void readPacketFilterComplete(byte[] data) {
+        sendMessage(EVENT_READ_PACKET_FILTER_COMPLETE, data);
+    }
+
     /**
      * Set the TCP buffer sizes to use.
      *
@@ -845,7 +893,16 @@ public class IpClient extends StateMachine {
         pw.println(mTag + " APF dump:");
         pw.increaseIndent();
         if (apfFilter != null) {
+            if (apfCapabilities.hasDataAccess()) {
+                // Request a new snapshot, then wait for it.
+                mApfDataSnapshotComplete.close();
+                mCallback.startReadPacketFilter();
+                if (!mApfDataSnapshotComplete.block(1000)) {
+                    pw.print("TIMEOUT: DUMPING STALE APF SNAPSHOT");
+                }
+            }
             apfFilter.dump(pw);
+
         } else {
             pw.print("No active ApfFilter; ");
             if (provisioningConfig == null) {
@@ -857,7 +914,6 @@ public class IpClient extends StateMachine {
             }
         }
         pw.decreaseIndent();
-
         pw.println();
         pw.println(mTag + " current ProvisioningConfiguration:");
         pw.increaseIndent();
@@ -1028,7 +1084,8 @@ public class IpClient extends StateMachine {
         // Note that we can still be disconnected by IpReachabilityMonitor
         // if the IPv6 default gateway (but not the IPv6 DNS servers; see
         // accompanying code in IpReachabilityMonitor) is unreachable.
-        final boolean ignoreIPv6ProvisioningLoss = !mMultinetworkPolicyTracker.getAvoidBadWifi();
+        final boolean ignoreIPv6ProvisioningLoss = (mMultinetworkPolicyTracker != null)
+                && !mMultinetworkPolicyTracker.getAvoidBadWifi();
 
         // Additionally:
         //
@@ -1490,7 +1547,7 @@ public class IpClient extends StateMachine {
                     mContext.getResources().getBoolean(R.bool.config_apfDrop802_3Frames);
             apfConfig.ethTypeBlackList =
                     mContext.getResources().getIntArray(R.array.config_apfEthTypeBlackList);
-            mApfFilter = ApfFilter.maybeCreate(apfConfig, mInterfaceParams, mCallback);
+            mApfFilter = ApfFilter.maybeCreate(mContext, apfConfig, mInterfaceParams, mCallback);
             // TODO: investigate the effects of any multicast filtering racing/interfering with the
             // rest of this IP configuration startup.
             if (mApfFilter == null) {
@@ -1520,6 +1577,13 @@ public class IpClient extends StateMachine {
                 return;
             }
 
+            if (mConfiguration.mUsingMultinetworkPolicyTracker) {
+                mMultinetworkPolicyTracker = new MultinetworkPolicyTracker(
+                        mContext, getHandler(),
+                        () -> { mLog.log("OBSERVED AvoidBadWifi changed"); });
+                mMultinetworkPolicyTracker.start();
+            }
+
             if (mConfiguration.mUsingIpReachabilityMonitor && !startIpReachabilityMonitor()) {
                 doImmediateProvisioningFailure(
                         IpManagerEvent.ERROR_STARTING_IPREACHABILITYMONITOR);
@@ -1535,6 +1599,11 @@ public class IpClient extends StateMachine {
             if (mIpReachabilityMonitor != null) {
                 mIpReachabilityMonitor.stop();
                 mIpReachabilityMonitor = null;
+            }
+
+            if (mMultinetworkPolicyTracker != null) {
+                mMultinetworkPolicyTracker.shutdown();
+                mMultinetworkPolicyTracker = null;
             }
 
             if (mDhcpClient != null) {
@@ -1637,6 +1706,14 @@ public class IpClient extends StateMachine {
                     } else {
                         mCallback.setFallbackMulticastFilter(mMulticastFiltering);
                     }
+                    break;
+                }
+
+                case EVENT_READ_PACKET_FILTER_COMPLETE: {
+                    if (mApfFilter != null) {
+                        mApfFilter.setDataSnapshot((byte[]) msg.obj);
+                    }
+                    mApfDataSnapshotComplete.open();
                     break;
                 }
 

@@ -33,7 +33,6 @@ import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.content.pm.UserInfo;
 import android.os.UserManager;
-import android.util.Slog;
 import android.util.Xml;
 
 import com.android.internal.util.FastXmlSerializer;
@@ -108,14 +107,8 @@ public class NotificationAssistantsTest extends UiServiceTestCase {
     }
 
     @Test
-    public void testXmlUpgrade() throws Exception {
-        String xml = "<enabled_assistants/>";
-
-        XmlPullParser parser = Xml.newPullParser();
-        parser.setInput(new BufferedInputStream(
-                new ByteArrayInputStream(xml.toString().getBytes())), null);
-        parser.nextTag();
-        mAssistants.readXml(parser);
+    public void testXmlUpgrade() {
+        mAssistants.ensureAssistant();
 
         //once per user
         verify(mNm, times(mUm.getUsers().size())).readDefaultAssistant(anyInt());
@@ -131,44 +124,10 @@ public class NotificationAssistantsTest extends UiServiceTestCase {
         parser.setInput(new BufferedInputStream(
                 new ByteArrayInputStream(xml.toString().getBytes())), null);
         parser.nextTag();
-        mAssistants.readXml(parser);
+        mAssistants.readXml(parser, null);
 
-        // once per user
-        verify(mNm, times(mUm.getUsers().size())).readDefaultAssistant(anyInt());
+        verify(mNm, never()).readDefaultAssistant(anyInt());
         verify(mAssistants, times(1)).addApprovedList(
                 new ComponentName("b", "b").flattenToString(),10, true);
-    }
-
-    @Test
-    public void testXmlUpgradeOnce() throws Exception {
-        String xml = "<enabled_assistants/>";
-
-        XmlPullParser parser = Xml.newPullParser();
-        parser.setInput(new BufferedInputStream(
-                new ByteArrayInputStream(xml.toString().getBytes())), null);
-        parser.nextTag();
-        mAssistants.readXml(parser);
-
-        XmlSerializer serializer = new FastXmlSerializer();
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        serializer.setOutput(new BufferedOutputStream(baos), "utf-8");
-        serializer.startDocument(null, true);
-        mAssistants.writeXml(serializer, true);
-        serializer.endDocument();
-        serializer.flush();
-
-        //once per user
-        verify(mNm, times(mUm.getUsers().size())).readDefaultAssistant(anyInt());
-
-        Mockito.reset(mNm);
-
-        parser = Xml.newPullParser();
-        parser.setInput(new BufferedInputStream(
-                new ByteArrayInputStream(baos.toByteArray())), null);
-        parser.nextTag();
-        mAssistants.readXml(parser);
-
-        //once per user
-        verify(mNm, never()).readDefaultAssistant(anyInt());
     }
 }

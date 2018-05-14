@@ -48,7 +48,6 @@ import android.view.SurfaceSession;
 import android.view.SurfaceView;
 import android.view.ThreadedRenderer;
 import android.view.View;
-import android.view.ViewParent;
 import android.view.ViewRootImpl;
 
 import com.android.internal.R;
@@ -158,43 +157,20 @@ public final class Magnifier {
 
         configureCoordinates(xPosInView, yPosInView);
 
-        // Clamp the startX value to avoid magnifying content which does not belong to the magnified
-        // view. This will not take into account overlapping views.
-        // For this, we compute:
-        // - zeroScrollXInSurface: this is the start x of mView, where this is not masked by a
-        //                         potential scrolling container. For example, if mView is a
-        //                         TextView contained in a HorizontalScrollView,
-        //                         mViewCoordinatesInSurface will reflect the surface position of
-        //                         the first text character, rather than the position of the first
-        //                         visible one. Therefore, we need to add back the amount of
-        //                         scrolling from the parent containers.
-        // - actualWidth: similarly, the width of a View will be larger than its actually visible
-        //                width when it is contained in a scrolling container. We need to use
-        //                the minimum width of a scrolling container which contains this view.
-        int zeroScrollXInSurface = mViewCoordinatesInSurface[0];
-        int actualWidth = mView.getWidth();
-        ViewParent viewParent = mView.getParent();
-        while (viewParent instanceof View) {
-            final View container = (View) viewParent;
-            if (container.canScrollHorizontally(-1 /* left scroll */)
-                    || container.canScrollHorizontally(1 /* right scroll */)) {
-                zeroScrollXInSurface += container.getScrollX();
-                actualWidth = Math.min(actualWidth, container.getWidth()
-                        - container.getPaddingLeft() - container.getPaddingRight());
-            }
-            viewParent = viewParent.getParent();
-        }
-
-        final int startX = Math.max(zeroScrollXInSurface, Math.min(
+        // Clamp the startX location to avoid magnifying content which does not belong
+        // to the magnified view. This will not take into account overlapping views.
+        final Rect viewVisibleRegion = new Rect();
+        mView.getGlobalVisibleRect(viewVisibleRegion);
+        final int startX = Math.max(viewVisibleRegion.left, Math.min(
                 mCenterZoomCoords.x - mBitmapWidth / 2,
-                zeroScrollXInSurface + actualWidth - mBitmapWidth));
+                viewVisibleRegion.right - mBitmapWidth));
         final int startY = mCenterZoomCoords.y - mBitmapHeight / 2;
 
         if (xPosInView != mPrevPosInView.x || yPosInView != mPrevPosInView.y) {
             if (mWindow == null) {
                 synchronized (mLock) {
                     mWindow = new InternalPopupWindow(mView.getContext(), mView.getDisplay(),
-                            getValidViewSurface(),
+                            getValidParentSurfaceForMagnifier(),
                             mWindowWidth, mWindowHeight, mWindowElevation, mWindowCornerRadius,
                             Handler.getMain() /* draw the magnifier on the UI thread */, mLock,
                             mCallback);
@@ -257,19 +233,32 @@ public final class Magnifier {
         return mZoom;
     }
 
+    /**
+     * @hide
+     */
     @Nullable
-    private Surface getValidViewSurface() {
-        // TODO: deduplicate this against the first part of #performPixelCopy
-        final Surface surface;
-        if (mView instanceof SurfaceView) {
-            surface = ((SurfaceView) mView).getHolder().getSurface();
-        } else if (mView.getViewRootImpl() != null) {
-            surface = mView.getViewRootImpl().mSurface;
-        } else {
-            surface = null;
+    public Point getWindowCoords() {
+        if (mWindow == null) {
+            return null;
         }
+        return new Point(mWindow.mLastDrawContentPositionX, mWindow.mLastDrawContentPositionY);
+    }
 
-        return (surface != null && surface.isValid()) ? surface : null;
+    @Nullable
+    private Surface getValidParentSurfaceForMagnifier() {
+        if (mView.getViewRootImpl() != null) {
+            final Surface mainWindowSurface = mView.getViewRootImpl().mSurface;
+            if (mainWindowSurface != null && mainWindowSurface.isValid()) {
+                return mainWindowSurface;
+            }
+        }
+        if (mView instanceof SurfaceView) {
+            final Surface surfaceViewSurface = ((SurfaceView) mView).getHolder().getSurface();
+            if (surfaceViewSurface != null && surfaceViewSurface.isValid()) {
+                return surfaceViewSurface;
+            }
+        }
+        return null;
     }
 
     private void configureCoordinates(final float xPosInView, final float yPosInView) {
@@ -277,12 +266,12 @@ public final class Magnifier {
         // magnifier. These are relative to the surface the content is copied from.
         final float posX;
         final float posY;
+        mView.getLocationInSurface(mViewCoordinatesInSurface);
         if (mView instanceof SurfaceView) {
             // No offset required if the backing Surface matches the size of the SurfaceView.
             posX = xPosInView;
             posY = yPosInView;
         } else {
-            mView.getLocationInSurface(mViewCoordinatesInSurface);
             posX = xPosInView + mViewCoordinatesInSurface[0];
             posY = yPosInView + mViewCoordinatesInSurface[1];
         }
@@ -295,6 +284,14 @@ public final class Magnifier {
                 R.dimen.magnifier_offset);
         mWindowCoords.x = mCenterZoomCoords.x - mWindowWidth / 2;
         mWindowCoords.y = mCenterZoomCoords.y - mWindowHeight / 2 - verticalOffset;
+        if (mView instanceof SurfaceView && mView.getViewRootImpl() != null) {
+            // TODO: deduplicate against the first part of #getValidParentSurfaceForMagnifier()
+            final Surface mainWindowSurface = mView.getViewRootImpl().mSurface;
+            if (mainWindowSurface != null && mainWindowSurface.isValid()) {
+                mWindowCoords.x += mViewCoordinatesInSurface[0];
+                mWindowCoords.y += mViewCoordinatesInSurface[1];
+            }
+        }
     }
 
     private void performPixelCopy(final int startXInSurface, final int startYInSurface,
@@ -374,6 +371,9 @@ public final class Magnifier {
         // The alpha set on the magnifier's content, which defines how
         // prominent the white background is.
         private static final int CONTENT_BITMAP_ALPHA = 242;
+        // The z of the magnifier surface, defining its z order in the list of
+        // siblings having the same parent surface (usually the main app surface).
+        private static final int SURFACE_Z = 5;
 
         // Display associated to the view the magnifier is attached to.
         private final Display mDisplay;
@@ -398,8 +398,11 @@ public final class Magnifier {
         private final Runnable mMagnifierUpdater;
         // The handler where the magnifier updater jobs will be post'd.
         private final Handler mHandler;
-        // The callback to be run after the next draw. Only used for testing.
+        // The callback to be run after the next draw.
         private Callback mCallback;
+        // The position of the magnifier content when the last draw was requested.
+        private int mLastDrawContentPositionX;
+        private int mLastDrawContentPositionY;
 
         // Members below describe the state of the magnifier. Reads/writes to them
         // have to be synchronized between the UI thread and the thread that handles
@@ -416,6 +419,12 @@ public final class Magnifier {
         private int mWindowPositionX;
         private int mWindowPositionY;
         private boolean mPendingWindowPositionUpdate;
+
+        // The lock used to synchronize the UI and render threads when a #destroy
+        // is performed on the UI thread and a frame callback on the render thread.
+        // When both mLock and mDestroyLock need to be held at the same time,
+        // mDestroyLock should be acquired before mLock in order to avoid deadlocks.
+        private final Object mDestroyLock = new Object();
 
         InternalPopupWindow(final Context context, final Display display,
                 final Surface parentSurface,
@@ -541,9 +550,11 @@ public final class Magnifier {
          * Destroys this instance.
          */
         public void destroy() {
+            synchronized (mDestroyLock) {
+                mSurface.destroy();
+            }
             synchronized (mLock) {
                 mRenderer.destroy();
-                mSurface.destroy();
                 mSurfaceControl.destroy();
                 mSurfaceSession.kill();
                 mBitmapRenderNode.destroy();
@@ -591,27 +602,32 @@ public final class Magnifier {
                     final int pendingY = mWindowPositionY;
 
                     callback = frame -> {
-                        synchronized (mLock) {
+                        synchronized (mDestroyLock) {
                             if (!mSurface.isValid()) {
                                 return;
                             }
-                            mRenderer.setLightCenter(mDisplay, pendingX, pendingY);
-                            // Show or move the window at the content draw frame.
-                            SurfaceControl.openTransaction();
-                            mSurfaceControl.deferTransactionUntil(mSurface, frame);
-                            if (updateWindowPosition) {
-                                mSurfaceControl.setPosition(pendingX, pendingY);
+                            synchronized (mLock) {
+                                mRenderer.setLightCenter(mDisplay, pendingX, pendingY);
+                                // Show or move the window at the content draw frame.
+                                SurfaceControl.openTransaction();
+                                mSurfaceControl.deferTransactionUntil(mSurface, frame);
+                                if (updateWindowPosition) {
+                                    mSurfaceControl.setPosition(pendingX, pendingY);
+                                }
+                                if (firstDraw) {
+                                    mSurfaceControl.setLayer(SURFACE_Z);
+                                    mSurfaceControl.show();
+                                }
+                                SurfaceControl.closeTransaction();
                             }
-                            if (firstDraw) {
-                                mSurfaceControl.show();
-                            }
-                            SurfaceControl.closeTransaction();
                         }
                     };
                 } else {
                     callback = null;
                 }
 
+                mLastDrawContentPositionX = mWindowPositionX + mOffsetX;
+                mLastDrawContentPositionY = mWindowPositionY + mOffsetY;
                 mFrameDrawScheduled = false;
             }
 

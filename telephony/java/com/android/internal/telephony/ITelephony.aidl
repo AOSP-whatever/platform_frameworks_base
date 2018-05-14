@@ -829,6 +829,16 @@ interface ITelephony {
     boolean isResolvingImsBinding();
 
     /**
+    *  @return true if the ImsService to bind to for the slot id specified was set, false otherwise.
+    */
+    boolean setImsService(int slotId, boolean isCarrierImsService, String packageName);
+
+    /**
+    * @return the package name of the carrier/device ImsService associated with this slot.
+    */
+    String getImsService(int slotId, boolean isCarrierImsService);
+
+    /**
      * Set the network selection mode to automatic.
      *
      * @param subId the id of the subscription to update.
@@ -1059,6 +1069,17 @@ interface ITelephony {
     boolean setRoamingOverride(int subId, in List<String> gsmRoamingList,
             in List<String> gsmNonRoamingList, in List<String> cdmaRoamingList,
             in List<String> cdmaNonRoamingList);
+
+    /**
+     * Returns the result and response from RIL for oem request
+     *
+     * @param oemReq the data is sent to ril.
+     * @param oemResp the respose data from RIL.
+     * @return negative value request was not handled or get error
+     *         0 request was handled succesfully, but no response data
+     *         positive value success, data length of response
+     */
+    int invokeOemRilRequestRaw(in byte[] oemReq, out byte[] oemResp);
 
     /**
      * Check if any mobile Radios need to be shutdown.
@@ -1486,4 +1507,23 @@ interface ITelephony {
      * screen is off) we want to turn on those indications even when the screen is off.
      */
     void setRadioIndicationUpdateMode(int subId, int filters, int mode);
+
+    /**
+     * A test API to override carrier information including mccmnc, imsi, iccid, gid1, gid2,
+     * plmn and spn. This would be handy for, eg, forcing a particular carrier id, carrier's config
+     * (also any country or carrier overlays) to be loaded when using a test SIM with a call box.
+     */
+    void setCarrierTestOverride(int subId, String mccmnc, String imsi, String iccid, String gid1,
+            String gid2, String plmn, String spn);
+
+    /**
+     * A test API to return installed carrier id list version.
+     */
+    int getCarrierIdListVersion(int subId);
+
+    /**
+     * A test API to reload the UICC profile.
+     * @hide
+     */
+    void refreshUiccProfile(int subId);
 }

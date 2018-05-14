@@ -22,8 +22,10 @@ import static android.app.ActivityManager.RECENT_WITH_EXCLUDED;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_ASSISTANT;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_HOME;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_RECENTS;
+import static android.app.WindowConfiguration.ACTIVITY_TYPE_UNDEFINED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_SPLIT_SCREEN_PRIMARY;
+import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
 import static android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
@@ -523,7 +525,7 @@ class RecentTasks {
         }
         for (int i = mTasks.size() - 1; i >= 0; --i) {
             final TaskRecord tr = mTasks.get(i);
-            if (tr.userId == userId && !mService.mLockTaskController.isTaskWhitelisted(tr)) {
+            if (tr.userId == userId && !mService.getLockTaskController().isTaskWhitelisted(tr)) {
                 remove(tr);
             }
         }
@@ -534,8 +536,8 @@ class RecentTasks {
             final TaskRecord tr = mTasks.get(i);
             final String taskPackageName =
                     tr.getBaseIntent().getComponent().getPackageName();
-            if (tr.userId != userId) return;
-            if (!taskPackageName.equals(packageName)) return;
+            if (tr.userId != userId) continue;
+            if (!taskPackageName.equals(packageName)) continue;
 
             mService.mStackSupervisor.removeTaskByIdLocked(tr.taskId, true, REMOVE_FROM_RECENTS,
                     "remove-package-task");
@@ -550,7 +552,7 @@ class RecentTasks {
                 continue;
             }
 
-            ComponentName cn = tr.intent.getComponent();
+            ComponentName cn = tr.intent != null ? tr.intent.getComponent() : null;
             final boolean sameComponent = cn != null && cn.getPackageName().equals(packageName)
                     && (filterByClasses == null || filterByClasses.contains(cn.getClassName()));
             if (sameComponent) {
@@ -1155,6 +1157,11 @@ class RecentTasks {
                 }
         }
 
+        // If we're in lock task mode, ignore the root task
+        if (task == mService.getLockTaskController().getRootTask()) {
+            return false;
+        }
+
         return true;
     }
 
@@ -1250,7 +1257,8 @@ class RecentTasks {
         for (int i = 0; i < recentsCount; i++) {
             final TaskRecord tr = mTasks.get(i);
             if (task != tr) {
-                if (!task.hasCompatibleActivityType(tr)) {
+                if (!hasCompatibleActivityTypeAndWindowingMode(task, tr)
+                        || task.userId != tr.userId) {
                     continue;
                 }
                 final Intent trIntent = tr.intent;
@@ -1541,5 +1549,30 @@ class RecentTasks {
         rti.topActivity = (mTmpReport.top != null) ? mTmpReport.top.intent.getComponent() : null;
 
         return rti;
+    }
+
+    /**
+     * @return Whether the activity types and windowing modes of the two tasks are considered
+     *         compatible. This is necessary because we currently don't persist the activity type
+     *         or the windowing mode with the task, so they can be undefined when restored.
+     */
+    private boolean hasCompatibleActivityTypeAndWindowingMode(TaskRecord t1, TaskRecord t2) {
+        final int activityType = t1.getActivityType();
+        final int windowingMode = t1.getWindowingMode();
+        final boolean isUndefinedType = activityType == ACTIVITY_TYPE_UNDEFINED;
+        final boolean isUndefinedMode = windowingMode == WINDOWING_MODE_UNDEFINED;
+        final int otherActivityType = t2.getActivityType();
+        final int otherWindowingMode = t2.getWindowingMode();
+        final boolean isOtherUndefinedType = otherActivityType == ACTIVITY_TYPE_UNDEFINED;
+        final boolean isOtherUndefinedMode = otherWindowingMode == WINDOWING_MODE_UNDEFINED;
+
+        // An activity type and windowing mode is compatible if they are the exact same type/mode,
+        // or if one of the type/modes is undefined
+        final boolean isCompatibleType = activityType == otherActivityType
+                || isUndefinedType || isOtherUndefinedType;
+        final boolean isCompatibleMode = windowingMode == otherWindowingMode
+                || isUndefinedMode || isOtherUndefinedMode;
+
+        return isCompatibleType && isCompatibleMode;
     }
 }

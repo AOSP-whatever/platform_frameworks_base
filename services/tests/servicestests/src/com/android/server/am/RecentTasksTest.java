@@ -21,6 +21,7 @@ import static android.app.WindowConfiguration.ACTIVITY_TYPE_HOME;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_UNDEFINED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
+import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
 import static android.content.Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS;
 import static android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.spy;
 
 import static java.lang.Integer.MAX_VALUE;
 
+import android.annotation.TestApi;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RecentTaskInfo;
 import android.app.ActivityManager.RunningTaskInfo;
@@ -302,6 +304,8 @@ public class RecentTasksTest extends ActivityTestsBase {
 
     @Test
     public void testAddTaskCompatibleActivityType_expectRemove() throws Exception {
+        // Test with undefined activity type since the type is not persisted by the task persister
+        // and we want to ensure that a new task will match a restored task
         Configuration config1 = new Configuration();
         config1.windowConfiguration.setActivityType(ACTIVITY_TYPE_UNDEFINED);
         TaskRecord task1 = createTaskBuilder(".Task1")
@@ -324,6 +328,92 @@ public class RecentTasksTest extends ActivityTestsBase {
         assertTrue(mCallbacksRecorder.trimmed.isEmpty());
         assertTrue(mCallbacksRecorder.removed.size() == 1);
         assertTrue(mCallbacksRecorder.removed.contains(task1));
+    }
+
+    @Test
+    public void testAddTaskCompatibleActivityTypeDifferentUser_expectNoRemove() throws Exception {
+        Configuration config1 = new Configuration();
+        config1.windowConfiguration.setActivityType(ACTIVITY_TYPE_UNDEFINED);
+        TaskRecord task1 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .setUserId(TEST_USER_0_ID)
+                .build();
+        task1.onConfigurationChanged(config1);
+        assertTrue(task1.getActivityType() == ACTIVITY_TYPE_UNDEFINED);
+        mRecentTasks.add(task1);
+        mCallbacksRecorder.clear();
+
+        TaskRecord task2 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .setUserId(TEST_USER_1_ID)
+                .build();
+        assertTrue(task2.getActivityType() == ACTIVITY_TYPE_STANDARD);
+        mRecentTasks.add(task2);
+        assertTrue(mCallbacksRecorder.added.size() == 1);
+        assertTrue(mCallbacksRecorder.added.contains(task2));
+        assertTrue(mCallbacksRecorder.trimmed.isEmpty());
+        assertTrue(mCallbacksRecorder.removed.isEmpty());
+    }
+
+    @Test
+    public void testAddTaskCompatibleWindowingMode_expectRemove() throws Exception {
+        Configuration config1 = new Configuration();
+        config1.windowConfiguration.setWindowingMode(WINDOWING_MODE_UNDEFINED);
+        TaskRecord task1 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .build();
+        task1.onConfigurationChanged(config1);
+        assertTrue(task1.getWindowingMode() == WINDOWING_MODE_UNDEFINED);
+        mRecentTasks.add(task1);
+        mCallbacksRecorder.clear();
+
+        Configuration config2 = new Configuration();
+        config2.windowConfiguration.setWindowingMode(WINDOWING_MODE_FULLSCREEN);
+        TaskRecord task2 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .build();
+        task2.onConfigurationChanged(config2);
+        assertTrue(task2.getWindowingMode() == WINDOWING_MODE_FULLSCREEN);
+        mRecentTasks.add(task2);
+
+        assertTrue(mCallbacksRecorder.added.size() == 1);
+        assertTrue(mCallbacksRecorder.added.contains(task2));
+        assertTrue(mCallbacksRecorder.trimmed.isEmpty());
+        assertTrue(mCallbacksRecorder.removed.size() == 1);
+        assertTrue(mCallbacksRecorder.removed.contains(task1));
+    }
+
+    @Test
+    public void testAddTaskIncompatibleWindowingMode_expectNoRemove() throws Exception {
+        Configuration config1 = new Configuration();
+        config1.windowConfiguration.setWindowingMode(WINDOWING_MODE_FULLSCREEN);
+        TaskRecord task1 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .build();
+        task1.onConfigurationChanged(config1);
+        assertTrue(task1.getWindowingMode() == WINDOWING_MODE_FULLSCREEN);
+        mRecentTasks.add(task1);
+
+        Configuration config2 = new Configuration();
+        config2.windowConfiguration.setWindowingMode(WINDOWING_MODE_PINNED);
+        TaskRecord task2 = createTaskBuilder(".Task1")
+                .setFlags(FLAG_ACTIVITY_NEW_TASK)
+                .setStack(mStack)
+                .build();
+        task2.onConfigurationChanged(config2);
+        assertTrue(task2.getWindowingMode() == WINDOWING_MODE_PINNED);
+        mRecentTasks.add(task2);
+
+        assertTrue(mCallbacksRecorder.added.size() == 2);
+        assertTrue(mCallbacksRecorder.added.contains(task1));
+        assertTrue(mCallbacksRecorder.added.contains(task2));
+        assertTrue(mCallbacksRecorder.trimmed.isEmpty());
+        assertTrue(mCallbacksRecorder.removed.isEmpty());
     }
 
     @Test
@@ -567,6 +657,23 @@ public class RecentTasksTest extends ActivityTestsBase {
     }
 
     @Test
+    public void testRemovePackageByName() throws Exception {
+        // Add a number of tasks with the same package name
+        mRecentTasks.add(createTaskBuilder("com.android.pkg1", ".Task1").build());
+        mRecentTasks.add(createTaskBuilder("com.android.pkg2", ".Task2").build());
+        mRecentTasks.add(createTaskBuilder("com.android.pkg3", ".Task3").build());
+        mRecentTasks.add(createTaskBuilder("com.android.pkg1", ".Task4").build());
+        mRecentTasks.removeTasksByPackageName("com.android.pkg1", TEST_USER_0_ID);
+
+        final ArrayList<TaskRecord> tasks = mRecentTasks.getRawTasks();
+        for (int i = 0; i < tasks.size(); i++) {
+            if (tasks.get(i).intent.getComponent().getPackageName().equals("com.android.pkg1")) {
+                fail("Expected com.android.pkg1 tasks to be removed");
+            }
+        }
+    }
+
+    @Test
     public void testNotRecentsComponent_denyApiAccess() throws Exception {
         doReturn(PackageManager.PERMISSION_DENIED).when(mService).checkPermission(anyString(),
                 anyInt(), anyInt());
@@ -649,7 +756,9 @@ public class RecentTasksTest extends ActivityTestsBase {
         assertSecurityException(expectCallable, () -> mService.cancelTaskWindowTransition(0));
         assertSecurityException(expectCallable, () -> mService.startRecentsActivity(null, null,
                 null));
-        assertSecurityException(expectCallable, () -> mService.cancelRecentsAnimation());
+        assertSecurityException(expectCallable, () -> mService.cancelRecentsAnimation(true));
+        assertSecurityException(expectCallable, () -> mService.stopAppSwitches());
+        assertSecurityException(expectCallable, () -> mService.resumeAppSwitches());
     }
 
     private void testGetTasksApis(boolean expectCallable) {
@@ -665,8 +774,12 @@ public class RecentTasksTest extends ActivityTestsBase {
     }
 
     private TaskBuilder createTaskBuilder(String className) {
+        return createTaskBuilder(mContext.getPackageName(), className);
+    }
+
+    private TaskBuilder createTaskBuilder(String packageName, String className) {
         return new TaskBuilder(mService.mStackSupervisor)
-                .setComponent(new ComponentName(mContext.getPackageName(), className))
+                .setComponent(new ComponentName(packageName, className))
                 .setStack(mStack)
                 .setTaskId(LAST_TASK_ID++)
                 .setUserId(TEST_USER_0_ID);

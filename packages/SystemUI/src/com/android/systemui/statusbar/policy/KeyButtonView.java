@@ -28,7 +28,6 @@ import android.metrics.LogMaker;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.os.VibrationEffect;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.HapticFeedbackConstants;
@@ -50,8 +49,9 @@ import com.android.systemui.OverviewProxyService;
 import com.android.systemui.R;
 import com.android.systemui.plugins.statusbar.phone.NavBarButtonProvider.ButtonInterface;
 import com.android.systemui.shared.system.ActivityManagerWrapper;
-import com.android.systemui.statusbar.VibratorHelper;
+import com.android.systemui.shared.system.NavigationBarCompat;
 
+import static android.view.KeyEvent.KEYCODE_HOME;
 import static android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK;
 import static android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK;
 
@@ -62,9 +62,9 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
     private int mContentDescriptionRes;
     private long mDownTime;
     private int mCode;
-    private int mTouchSlop;
     private int mTouchDownX;
     private int mTouchDownY;
+    private boolean mIsVertical;
     private boolean mSupportsLongpress = true;
     private AudioManager mAudioManager;
     private boolean mGestureAborted;
@@ -72,7 +72,6 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
     private OnClickListener mOnClickListener;
     private final KeyButtonRipple mRipple;
     private final OverviewProxyService mOverviewProxyService;
-    private final VibratorHelper mVibratorHelper;
     private final MetricsLogger mMetricsLogger = Dependency.get(MetricsLogger.class);
 
     private final Runnable mCheckLongPress = new Runnable() {
@@ -115,11 +114,9 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
         a.recycle();
 
         setClickable(true);
-        mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
         mRipple = new KeyButtonRipple(context, this);
-        mVibratorHelper = Dependency.get(VibratorHelper.class);
         mOverviewProxyService = Dependency.get(OverviewProxyService.class);
         setBackground(mRipple);
     }
@@ -200,7 +197,7 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
     }
 
     public boolean onTouchEvent(MotionEvent ev) {
-        final boolean isProxyConnected = mOverviewProxyService.getProxy() != null;
+        final boolean showSwipeUI = mOverviewProxyService.shouldShowSwipeUpUI();
         final int action = ev.getAction();
         int x, y;
         if (action == MotionEvent.ACTION_DOWN) {
@@ -226,7 +223,7 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
                     // Provide the same haptic feedback that the system offers for virtual keys.
                     performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                 }
-                if (!isProxyConnected) {
+                if (!showSwipeUI) {
                     playSoundEffect(SoundEffectConstants.CLICK);
                 }
                 removeCallbacks(mCheckLongPress);
@@ -235,8 +232,13 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
             case MotionEvent.ACTION_MOVE:
                 x = (int)ev.getRawX();
                 y = (int)ev.getRawY();
-                boolean exceededTouchSlopX = Math.abs(x - mTouchDownX) > mTouchSlop;
-                boolean exceededTouchSlopY = Math.abs(y - mTouchDownY) > mTouchSlop;
+
+                boolean exceededTouchSlopX = Math.abs(x - mTouchDownX) > (mIsVertical
+                        ? NavigationBarCompat.getQuickScrubTouchSlopPx()
+                        : NavigationBarCompat.getQuickStepTouchSlopPx());
+                boolean exceededTouchSlopY = Math.abs(y - mTouchDownY) > (mIsVertical
+                        ? NavigationBarCompat.getQuickStepTouchSlopPx()
+                        : NavigationBarCompat.getQuickScrubTouchSlopPx());
                 if (exceededTouchSlopX || exceededTouchSlopY) {
                     // When quick step is enabled, prevent animating the ripple triggered by
                     // setPressed and decide to run it on touch up
@@ -255,11 +257,10 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
                 final boolean doIt = isPressed() && !mLongClicked;
                 setPressed(false);
                 final boolean doHapticFeedback = (SystemClock.uptimeMillis() - mDownTime) > 150;
-                if (isProxyConnected) {
+                if (showSwipeUI) {
                     if (doIt) {
-                        if (doHapticFeedback) {
-                            mVibratorHelper.vibrate(VibrationEffect.EFFECT_TICK);
-                        }
+                        // Apply haptic feedback on touch up since there is none on touch down
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                         playSoundEffect(SoundEffectConstants.CLICK);
                     }
                 } else if (doHapticFeedback && !mLongClicked) {
@@ -269,9 +270,6 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
                 }
                 if (mCode != 0) {
                     if (doIt) {
-                        // If there was a pending remote recents animation, then we need to
-                        // cancel the animation now before we handle the button itself
-                        ActivityManagerWrapper.getInstance().cancelRecentsAnimation();
                         sendEvent(KeyEvent.ACTION_UP, 0);
                         sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
                     } else {
@@ -342,7 +340,7 @@ public class KeyButtonView extends ImageView implements ButtonInterface {
 
     @Override
     public void setVertical(boolean vertical) {
-        //no op
+        mIsVertical = vertical;
     }
 }
 

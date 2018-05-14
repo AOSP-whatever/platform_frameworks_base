@@ -34,7 +34,6 @@ import android.util.Log;
 import android.util.Slog;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.WindowManagerGlobal;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
@@ -45,6 +44,7 @@ import com.android.systemui.R;
 import com.android.systemui.plugins.statusbar.phone.NavGesture.GestureHelper;
 import com.android.systemui.shared.recents.IOverviewProxy;
 import com.android.systemui.shared.recents.utilities.Utilities;
+import com.android.systemui.shared.system.NavigationBarCompat;
 
 import static android.view.WindowManagerPolicyConstants.NAV_BAR_LEFT;
 import static android.view.WindowManagerPolicyConstants.NAV_BAR_BOTTOM;
@@ -69,6 +69,7 @@ public class QuickStepController implements GestureHelper {
     private float mTranslation;
     private int mTouchDownX;
     private int mTouchDownY;
+    private boolean mDragScrubActive;
     private boolean mDragPositive;
     private boolean mIsVertical;
     private boolean mIsRTL;
@@ -82,7 +83,6 @@ public class QuickStepController implements GestureHelper {
     private final Interpolator mQuickScrubEndInterpolator = new DecelerateInterpolator();
     private final Rect mTrackRect = new Rect();
     private final Paint mTrackPaint = new Paint();
-    private final int mScrollTouchSlop;
     private final OverviewProxyService mOverviewEventSender;
     private final int mTrackThickness;
     private final int mTrackPadding;
@@ -115,6 +115,7 @@ public class QuickStepController implements GestureHelper {
         @Override
         public void onAnimationEnd(Animator animation) {
             mQuickScrubActive = false;
+            mDragScrubActive = false;
             mTranslation = 0;
             mQuickScrubEndAnimator.setCurrentPlayTime(mQuickScrubEndAnimator.getDuration());
             mHomeButtonView = null;
@@ -123,7 +124,6 @@ public class QuickStepController implements GestureHelper {
 
     public QuickStepController(Context context) {
         mContext = context;
-        mScrollTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         mOverviewEventSender = Dependency.get(OverviewProxyService.class);
         mTrackThickness = getDimensionPixelSize(mContext, R.dimen.nav_quick_scrub_track_thickness);
         mTrackPadding = getDimensionPixelSize(mContext, R.dimen.nav_quick_scrub_track_edge_padding);
@@ -168,8 +168,8 @@ public class QuickStepController implements GestureHelper {
     }
 
     private boolean handleTouchEvent(MotionEvent event) {
-        if (!mNavigationBarView.isQuickScrubEnabled()
-                && !mNavigationBarView.isQuickStepSwipeUpEnabled()) {
+        if (mOverviewEventSender.getProxy() == null || (!mNavigationBarView.isQuickScrubEnabled()
+                && !mNavigationBarView.isQuickStepSwipeUpEnabled())) {
             mNavigationBarView.getHomeButton().setDelayTouchFeedback(false /* delay */);
             return false;
         }
@@ -177,8 +177,8 @@ public class QuickStepController implements GestureHelper {
 
         final ButtonDispatcher homeButton = mNavigationBarView.getHomeButton();
         final boolean homePressed = mNavigationBarView.getDownHitTarget() == HIT_TARGET_HOME;
-        int action = event.getAction();
-        switch (action & MotionEvent.ACTION_MASK) {
+        int action = event.getActionMasked();
+        switch (action) {
             case MotionEvent.ACTION_DOWN: {
                 int x = (int) event.getX();
                 int y = (int) event.getY();
@@ -199,28 +199,35 @@ public class QuickStepController implements GestureHelper {
                 break;
             }
             case MotionEvent.ACTION_MOVE: {
-                if (mQuickStepStarted || !mAllowGestureDetection){
+                if (mQuickStepStarted || !mAllowGestureDetection || mHomeButtonView == null){
                     break;
                 }
                 int x = (int) event.getX();
                 int y = (int) event.getY();
                 int xDiff = Math.abs(x - mTouchDownX);
                 int yDiff = Math.abs(y - mTouchDownY);
-                boolean exceededTouchSlopX = xDiff > mScrollTouchSlop && xDiff > yDiff;
-                boolean exceededTouchSlopY = yDiff > mScrollTouchSlop && yDiff > xDiff;
-                boolean exceededTouchSlop, exceededPerpendicularTouchSlop;
+
+                boolean exceededScrubTouchSlop, exceededSwipeUpTouchSlop, exceededScrubDragSlop;
                 int pos, touchDown, offset, trackSize;
 
                 if (mIsVertical) {
-                    exceededTouchSlop = exceededTouchSlopY;
-                    exceededPerpendicularTouchSlop = exceededTouchSlopX;
+                    exceededScrubTouchSlop =
+                            yDiff > NavigationBarCompat.getQuickScrubTouchSlopPx() && yDiff > xDiff;
+                    exceededSwipeUpTouchSlop =
+                            xDiff > NavigationBarCompat.getQuickStepTouchSlopPx() && xDiff > yDiff;
+                    exceededScrubDragSlop =
+                            yDiff > NavigationBarCompat.getQuickScrubDragSlopPx() && yDiff > xDiff;
                     pos = y;
                     touchDown = mTouchDownY;
                     offset = pos - mTrackRect.top;
                     trackSize = mTrackRect.height();
                 } else {
-                    exceededTouchSlop = exceededTouchSlopX;
-                    exceededPerpendicularTouchSlop = exceededTouchSlopY;
+                    exceededScrubTouchSlop =
+                            xDiff > NavigationBarCompat.getQuickScrubTouchSlopPx() && xDiff > yDiff;
+                    exceededSwipeUpTouchSlop =
+                            yDiff > NavigationBarCompat.getQuickStepTouchSlopPx() && yDiff > xDiff;
+                    exceededScrubDragSlop =
+                            xDiff > NavigationBarCompat.getQuickScrubDragSlopPx() && xDiff > yDiff;
                     pos = x;
                     touchDown = mTouchDownX;
                     offset = pos - mTrackRect.left;
@@ -228,7 +235,7 @@ public class QuickStepController implements GestureHelper {
                 }
                 // Decide to start quickstep if dragging away from the navigation bar, otherwise in
                 // the parallel direction, decide to start quickscrub. Only one may run.
-                if (!mQuickScrubActive && exceededPerpendicularTouchSlop) {
+                if (!mQuickScrubActive && exceededSwipeUpTouchSlop) {
                     if (mNavigationBarView.isQuickStepSwipeUpEnabled()) {
                         startQuickStep(event);
                     }
@@ -244,29 +251,38 @@ public class QuickStepController implements GestureHelper {
                     offset -= mIsVertical ? mTrackRect.height() : mTrackRect.width();
                 }
 
-                // Control the button movement
-                if (!mQuickScrubActive && exceededTouchSlop) {
-                    boolean allowDrag = !mDragPositive
-                            ? offset < 0 && pos < touchDown : offset >= 0 && pos > touchDown;
-                    if (allowDrag) {
+                final boolean allowDrag = !mDragPositive
+                        ? offset < 0 && pos < touchDown : offset >= 0 && pos > touchDown;
+                if (allowDrag) {
+                    // Passing the drag slop is for visual feedback and will not initiate anything
+                    if (!mDragScrubActive && exceededScrubDragSlop) {
                         mDownOffset = offset;
+                        mDragScrubActive = true;
+                    }
+
+                    // Passing the drag slop then touch slop will start quick step
+                    if (!mQuickScrubActive && exceededScrubTouchSlop) {
                         homeButton.abortCurrentGesture();
                         startQuickScrub();
                     }
                 }
-                if (mQuickScrubActive && (mDragPositive && offset >= 0
+
+                if ((mQuickScrubActive || mDragScrubActive) && (mDragPositive && offset >= 0
                         || !mDragPositive && offset <= 0)) {
-                    float scrubFraction = Utilities.clamp(Math.abs(offset) * 1f / trackSize, 0, 1);
                     mTranslation = !mDragPositive
-                        ? Utilities.clamp(offset - mDownOffset, -trackSize, 0)
-                        : Utilities.clamp(offset - mDownOffset, 0, trackSize);
-                    try {
-                        mOverviewEventSender.getProxy().onQuickScrubProgress(scrubFraction);
-                        if (DEBUG_OVERVIEW_PROXY) {
-                            Log.d(TAG_OPS, "Quick Scrub Progress:" + scrubFraction);
+                            ? Utilities.clamp(offset - mDownOffset, -trackSize, 0)
+                            : Utilities.clamp(offset - mDownOffset, 0, trackSize);
+                    if (mQuickScrubActive) {
+                        float scrubFraction =
+                                Utilities.clamp(Math.abs(offset) * 1f / trackSize, 0, 1);
+                        try {
+                            mOverviewEventSender.getProxy().onQuickScrubProgress(scrubFraction);
+                            if (DEBUG_OVERVIEW_PROXY) {
+                                Log.d(TAG_OPS, "Quick Scrub Progress:" + scrubFraction);
+                            }
+                        } catch (RemoteException e) {
+                            Log.e(TAG, "Failed to send progress of quick scrub.", e);
                         }
-                    } catch (RemoteException e) {
-                        Log.e(TAG, "Failed to send progress of quick scrub.", e);
                     }
                     if (mIsVertical) {
                         mHomeButtonView.setTranslationY(mTranslation);
@@ -283,7 +299,9 @@ public class QuickStepController implements GestureHelper {
         }
 
         // Proxy motion events to launcher if not handled by quick scrub
-        if (!mQuickScrubActive && mAllowGestureDetection) {
+        // Proxy motion events up/cancel that would be sent after long press on any nav button
+        if (!mQuickScrubActive && (mAllowGestureDetection || action == MotionEvent.ACTION_CANCEL
+                || action == MotionEvent.ACTION_UP)) {
             proxyMotionEvents(event);
         }
         return mQuickScrubActive || mQuickStepStarted;
@@ -370,10 +388,14 @@ public class QuickStepController implements GestureHelper {
         mOverviewEventSender.notifyQuickStepStarted();
         mNavigationBarView.getHomeButton().abortCurrentGesture();
         mHandler.removeCallbacksAndMessages(null);
+
+        if (mDragScrubActive) {
+            animateEnd();
+        }
     }
 
     private void startQuickScrub() {
-        if (!mQuickScrubActive) {
+        if (!mQuickScrubActive && mDragScrubActive) {
             mQuickScrubActive = true;
             mLightTrackColor = mContext.getColor(R.color.quick_step_track_background_light);
             mDarkTrackColor = mContext.getColor(R.color.quick_step_track_background_dark);
@@ -387,19 +409,22 @@ public class QuickStepController implements GestureHelper {
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to send start of quick scrub.", e);
             }
+            mOverviewEventSender.notifyQuickScrubStarted();
         }
     }
 
     private void endQuickScrub(boolean animate) {
-        if (mQuickScrubActive) {
+        if (mQuickScrubActive || mDragScrubActive) {
             animateEnd();
-            try {
-                mOverviewEventSender.getProxy().onQuickScrubEnd();
-                if (DEBUG_OVERVIEW_PROXY) {
-                    Log.d(TAG_OPS, "Quick Scrub End");
+            if (mQuickScrubActive) {
+                try {
+                    mOverviewEventSender.getProxy().onQuickScrubEnd();
+                    if (DEBUG_OVERVIEW_PROXY) {
+                        Log.d(TAG_OPS, "Quick Scrub End");
+                    }
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Failed to send end of quick scrub.", e);
                 }
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to send end of quick scrub.", e);
             }
         }
         if (mHomeButtonView != null && !animate) {
