@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"ካሜራ"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"ስዕሎች ያንሱ እና ቪዲዮ ይቅረጹ"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"&lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; ስዕሎችን እንዲያነሳ እና ቪዲዮን እንዲቀርጽ ይፈቀድለት?"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"የጥሪ ምዝገባ ማስታወሻዎች"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"የስልክ ጥሪ ምዝግባ ማስታወሻን ያንብቡ እና ይጻፉ"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"የእርስዎን ስልክ የጥሪ ምዝግብ ማስታወሻዎች &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; እንዲደርስበት ይፈቀድ?"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"ስልክ"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"የስልክ ጥሪዎች ያድርጉ እና ያስተዳድሩ"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"&lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; የስልክ ጥሪዎችን እንዲያደርግ እና እንዲያቀናብር ይፈቀድለት?"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"ጠቃሚ ምክር፦ ለማጉላት እና ለማሳነስ ሁለቴ-መታ አድርግ።"</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"ራስ ሙላ"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"በራስ ሰር ሙላ አዘጋጅ"</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"በ<xliff:g id="SERVICENAME">%1$s</xliff:g> በራስ-ሙላ"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">"፣ "</string>
@@ -1779,8 +1781,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"ሁሉም ቋንቋዎች"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"ሁሉም ክልሎች"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"ፈልግ"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"መተግበሪያን መክፈት አይቻልም"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"መተግበሪያ <xliff:g id="APP_NAME_0">%1$s</xliff:g> አሁን አይገኝም። ይህ በ<xliff:g id="APP_NAME_1">%2$s</xliff:g> ነው የሚቀናበረው።"</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"መተግበሪያ አይገኝም"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"<xliff:g id="APP_NAME_0">%1$s</xliff:g> አሁን ላይ አይገኝም። በ<xliff:g id="APP_NAME_1">%2$s</xliff:g> የሚተዳደር ነው።"</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"የበለጠ ለመረዳት"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"የስራ መገለጫ ይብራ?"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"የእርስዎ የስራ መተግበሪያዎች፣ ማሳወቂያዎች፣ ውሂብ እና ሌሎች የስራ መገለጫ ባህሪያት ይበራሉ"</string>
@@ -1877,5 +1879,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"ምን እንደታገደ ለመፈተሽ መታ ያድርጉ።"</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"ሥርዓት"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"ቅንብሮች"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"ካሜራ"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"ማይክሮፎን"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"በማያዎ ላይ በሌሎች መተግበሪያዎች ላይ በማሳየት ላይ"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"በመጫን ላይ"</string>
 </resources>

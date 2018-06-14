@@ -927,6 +927,13 @@ class WindowStateAnimator {
                 mTmpSourceBounds.inset(mWin.mLastRelayoutContentInsets);
                 allowStretching = true;
             }
+
+            // Make sure that what we're animating to and from is actually the right size in case
+            // the window cannot take up the full screen.
+            mTmpStackBounds.intersectUnchecked(w.mParentFrame);
+            mTmpSourceBounds.intersectUnchecked(w.mParentFrame);
+            mTmpAnimatingBounds.intersectUnchecked(w.mParentFrame);
+
             if (!mTmpSourceBounds.isEmpty()) {
                 // Get the final target stack bounds, if we are not animating, this is just the
                 // current stack bounds
@@ -1286,6 +1293,13 @@ class WindowStateAnimator {
         boolean shown = mSurfaceController.showRobustlyInTransaction();
         if (!shown)
             return false;
+
+        // If we had a preserved surface it's no longer needed, and it may be harmful
+        // if we are transparent.
+        if (mPendingDestroySurface != null && mDestroyPreservedSurfaceUponRedraw) {
+            mPendingDestroySurface.mSurfaceControl.hide();
+            mPendingDestroySurface.reparentChildrenInTransaction(mSurfaceController);
+        }
 
         return true;
     }

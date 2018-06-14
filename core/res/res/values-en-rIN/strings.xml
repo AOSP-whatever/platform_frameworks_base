@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"Camera"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"take pictures and record video"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"Allow &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; to take pictures and record video?"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"Call logs"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"read and write phone call log"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"Allow &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; to access your phone call logs?"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"Telephone"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"make and manage phone calls"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"Allow &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; to make and manage phone calls?"</string>
@@ -650,7 +653,7 @@
     <string name="phoneTypeHome" msgid="2570923463033985887">"Home"</string>
     <string name="phoneTypeMobile" msgid="6501463557754751037">"Mobile"</string>
     <string name="phoneTypeWork" msgid="8863939667059911633">"Work"</string>
-    <string name="phoneTypeFaxWork" msgid="3517792160008890912">"Work Fax"</string>
+    <string name="phoneTypeFaxWork" msgid="3517792160008890912">"Work fax"</string>
     <string name="phoneTypeFaxHome" msgid="2067265972322971467">"Home fax"</string>
     <string name="phoneTypePager" msgid="7582359955394921732">"Pager"</string>
     <string name="phoneTypeOther" msgid="1544425847868765990">"Other"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"Tip: double-tap to zoom in and out."</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"Auto-fill"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"Set up Auto-fill"</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"Autofill with <xliff:g id="SERVICENAME">%1$s</xliff:g>"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">", "</string>
@@ -1779,8 +1781,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"All languages"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"All regions"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"Search"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"Can’t open app"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"The app <xliff:g id="APP_NAME_0">%1$s</xliff:g> isn’t available at the moment. This is managed by <xliff:g id="APP_NAME_1">%2$s</xliff:g>."</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"App isn’t available"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"<xliff:g id="APP_NAME_0">%1$s</xliff:g> isn’t available at the moment. This is managed by <xliff:g id="APP_NAME_1">%2$s</xliff:g>."</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"Learn more"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"Turn on work profile?"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"Your work apps, notifications, data and other work profile features will be turned on"</string>
@@ -1877,5 +1879,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"Tap to check what\'s blocked."</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"System"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"Settings"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"Camera"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"Microphone"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"displaying over other apps on your screen"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"Loading"</string>
 </resources>

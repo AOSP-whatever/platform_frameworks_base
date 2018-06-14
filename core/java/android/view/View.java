@@ -9838,26 +9838,20 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     /**
      * @hide Compute the insets that should be consumed by this view and the ones
      * that should propagate to those under it.
+     *
+     * Note: This is used by appcompat's ActionBarOverlayLayout through reflection.
+     *
+     * @param inoutInsets the insets given to this view
+     * @param outLocalInsets the insets that should be applied to this view
+     * @deprecated use {@link #computeSystemWindowInsets}
+     * @return
      */
+    @Deprecated
     protected boolean computeFitSystemWindows(Rect inoutInsets, Rect outLocalInsets) {
-        if ((mViewFlags & OPTIONAL_FITS_SYSTEM_WINDOWS) == 0
-                || mAttachInfo == null
-                || ((mAttachInfo.mSystemUiVisibility & SYSTEM_UI_LAYOUT_FLAGS) == 0
-                        && !mAttachInfo.mOverscanRequested)) {
-            outLocalInsets.set(inoutInsets);
-            inoutInsets.set(0, 0, 0, 0);
-            return true;
-        } else {
-            // The application wants to take care of fitting system window for
-            // the content...  however we still need to take care of any overscan here.
-            final Rect overscan = mAttachInfo.mOverscanInsets;
-            outLocalInsets.set(overscan);
-            inoutInsets.left -= overscan.left;
-            inoutInsets.top -= overscan.top;
-            inoutInsets.right -= overscan.right;
-            inoutInsets.bottom -= overscan.bottom;
-            return false;
-        }
+        WindowInsets innerInsets = computeSystemWindowInsets(new WindowInsets(inoutInsets),
+                outLocalInsets);
+        inoutInsets.set(innerInsets.getSystemWindowInsets());
+        return innerInsets.isSystemWindowInsetsConsumed();
     }
 
     /**
@@ -9873,12 +9867,16 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     public WindowInsets computeSystemWindowInsets(WindowInsets in, Rect outLocalInsets) {
         if ((mViewFlags & OPTIONAL_FITS_SYSTEM_WINDOWS) == 0
                 || mAttachInfo == null
-                || (mAttachInfo.mSystemUiVisibility & SYSTEM_UI_LAYOUT_FLAGS) == 0) {
+                || ((mAttachInfo.mSystemUiVisibility & SYSTEM_UI_LAYOUT_FLAGS) == 0
+                && !mAttachInfo.mOverscanRequested)) {
             outLocalInsets.set(in.getSystemWindowInsets());
-            return in.consumeSystemWindowInsets();
+            return in.consumeSystemWindowInsets().inset(outLocalInsets);
         } else {
-            outLocalInsets.set(0, 0, 0, 0);
-            return in;
+            // The application wants to take care of fitting system window for
+            // the content...  however we still need to take care of any overscan here.
+            final Rect overscan = mAttachInfo.mOverscanInsets;
+            outLocalInsets.set(overscan);
+            return in.inset(outLocalInsets);
         }
     }
 
@@ -15053,8 +15051,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     public void setAlpha(@FloatRange(from=0.0, to=1.0) float alpha) {
         ensureTransformationInfo();
         if (mTransformationInfo.mAlpha != alpha) {
-            float oldAlpha = mTransformationInfo.mAlpha;
-            mTransformationInfo.mAlpha = alpha;
+            setAlphaInternal(alpha);
             if (onSetAlpha((int) (alpha * 255))) {
                 mPrivateFlags |= PFLAG_ALPHA_SET;
                 // subclass is handling alpha - don't optimize rendering cache invalidation
@@ -15064,10 +15061,6 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
                 mPrivateFlags &= ~PFLAG_ALPHA_SET;
                 invalidateViewProperty(true, false);
                 mRenderNode.setAlpha(getFinalAlpha());
-            }
-            // Report visibility changes, which can affect children, to accessibility
-            if ((alpha == 0) ^ (oldAlpha == 0)) {
-                notifySubtreeAccessibilityStateChangedIfNeeded();
             }
         }
     }
@@ -15085,7 +15078,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     boolean setAlphaNoInvalidation(float alpha) {
         ensureTransformationInfo();
         if (mTransformationInfo.mAlpha != alpha) {
-            mTransformationInfo.mAlpha = alpha;
+            setAlphaInternal(alpha);
             boolean subclassHandlesAlpha = onSetAlpha((int) (alpha * 255));
             if (subclassHandlesAlpha) {
                 mPrivateFlags |= PFLAG_ALPHA_SET;
@@ -15096,6 +15089,15 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
             }
         }
         return false;
+    }
+
+    private void setAlphaInternal(float alpha) {
+        float oldAlpha = mTransformationInfo.mAlpha;
+        mTransformationInfo.mAlpha = alpha;
+        // Report visibility changes, which can affect children, to accessibility
+        if ((alpha == 0) ^ (oldAlpha == 0)) {
+            notifySubtreeAccessibilityStateChangedIfNeeded();
+        }
     }
 
     /**
@@ -20854,7 +20856,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
         }
         // If this isn't laid out yet, focus assignment will be handled during the "deferment/
         // backtracking" of requestFocus during layout, so don't touch focus here.
-        if (!sCanFocusZeroSized && isLayoutValid()) {
+        if (!sCanFocusZeroSized && isLayoutValid()
+                // Don't touch focus if animating
+                && !(mParent instanceof ViewGroup && ((ViewGroup) mParent).isLayoutSuppressed())) {
             if (newWidth <= 0 || newHeight <= 0) {
                 if (hasFocus()) {
                     clearFocus();

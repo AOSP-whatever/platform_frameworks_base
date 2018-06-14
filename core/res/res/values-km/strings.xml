@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"កាមេរ៉ា"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"ថតរូប និងថតវីដេអូ"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"អនុញ្ញាតឱ្យ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; ថតរូប និងថត​វីដេអូ?"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"កំណត់​ហេតុ​ហៅ​ទូរសព្ទ"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"អាន និងសរសេរ​កំណត់​ហេតុ​ហៅ​ទូរសព្ទ"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"អនុញ្ញាត​ឱ្យ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; ចូល​ប្រើ​កំណត់ហេតុ​ហៅទូរសព្ទ​របស់អ្នក?"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"ទូរសព្ទ"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"ហៅទូរស័ព្ទ និងគ្រប់គ្រងការហៅទូរស័ព្ទ"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"អនុញ្ញាតឱ្យ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; គ្រប់គ្រង និង​ធ្វើការហៅទូរសព្ទ?"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"ជំនួយ៖ ប៉ះ​ពីរ​ដង ដើម្បី​ពង្រីក និង​បង្រួម។"</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"បំពេញ​ស្វ័យ​ប្រវត្តិ"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"រៀបចំ​ការ​បំពេញ​ស្វ័យ​ប្រវត្តិ"</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"បំពេញ​ដោយ​ស្វ័យ​ប្រវត្តិ​តាមរយៈ <xliff:g id="SERVICENAME">%1$s</xliff:g>"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">", "</string>
@@ -1781,8 +1783,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"ភាសាទាំងអស់"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"តំបន់ទាំងអស់"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"ស្វែងរក"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"មិន​អាច​បើកកម្មវិធី​បានទេ"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"កម្មវិធី <xliff:g id="APP_NAME_0">%1$s</xliff:g> មិន​អាច​ប្រើ​បាន​ទេនៅពេលនេះ។ វា​ស្ថិត​ក្រោម​ការគ្រប់គ្រងរបស់ <xliff:g id="APP_NAME_1">%2$s</xliff:g> ។"</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"​កម្មវិធី​មិន​អាច​ប្រើ​បានទេ"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"<xliff:g id="APP_NAME_0">%1$s</xliff:g> មិន​អាច​ប្រើ​បាន​ទេនៅពេលនេះ។ វា​ស្ថិត​ក្រោម​ការគ្រប់គ្រងរបស់ <xliff:g id="APP_NAME_1">%2$s</xliff:g> ។"</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"ស្វែងយល់បន្ថែម"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"បើក​កម្រង​ព័ត៌មាន​ការ​ងារ?"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"កម្មវិធី​ការងារ ការ​ជូនដំណឹង ទិន្នន័យ និង​មុខងារ​កម្រង​ព័ត៌មាន​ការងារ​ផ្សេង​ទៀត​របស់អ្នក​នឹង​ត្រូវ​បាន​បើក"</string>
@@ -1879,5 +1881,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"សូមចុច​ដើម្បី​មើល​ថា​​បានទប់ស្កាត់អ្វីខ្លះ។"</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"ប្រព័ន្ធ"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"ការកំណត់"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"កាមេរ៉ា"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"មីក្រូហ្វូន"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"កំពុងបង្ហាញ​ពីលើកម្មវិធីផ្សេងទៀត​នៅលើអេក្រង់​របស់អ្នក"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"កំពុងផ្ទុក"</string>
 </resources>

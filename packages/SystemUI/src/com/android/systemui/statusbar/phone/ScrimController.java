@@ -92,7 +92,7 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
     /**
      * Default alpha value for most scrims.
      */
-    public static final float GRADIENT_SCRIM_ALPHA = 0.70f;
+    public static final float GRADIENT_SCRIM_ALPHA = 0.45f;
     /**
      * A scrim varies its opacity based on a busyness factor, for example
      * how many notifications are currently visible.
@@ -450,10 +450,18 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
     }
 
     /**
-     * Sets the front alpha while in AOD.
+     * Sets the front scrim opacity in AOD so it's not as bright.
+     * <p>
+     * Displays usually don't support multiple dimming settings when in low power mode.
+     * The workaround is to modify the front scrim opacity when in AOD, so it's not as
+     * bright when you're at the movies or lying down on bed.
+     * <p>
+     * This value will be lost during transitions and only updated again after the the
+     * device is dozing when the light sensor is on.
      */
     public void setAodFrontScrimAlpha(float alpha) {
-        if (mState == ScrimState.AOD && mCurrentInFrontAlpha != alpha) {
+        if (mState == ScrimState.AOD && mDozeParameters.getAlwaysOn()
+                && mCurrentInFrontAlpha != alpha) {
             mCurrentInFrontAlpha = alpha;
             scheduleUpdate();
         }

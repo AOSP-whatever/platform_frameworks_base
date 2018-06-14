@@ -90,6 +90,21 @@ public final class ConfigUpdate {
     public static final String ACTION_UPDATE_NETWORK_WATCHLIST
             = "android.intent.action.UPDATE_NETWORK_WATCHLIST";
 
+    /**
+     * Broadcast intent action indicating that the updated carrier id config is available.
+     * <p>Extra: "VERSION" the numeric version of the new data. Devices should only install if the
+     * update version is newer than the current one.
+     * <p>Extra: "REQUIRED_HASH" the hash of the current update data.
+     * <p>Input: {@link android.content.Intent#getData} is URI of downloaded carrier id file.
+     * Devices should pick up the downloaded file and persist to the database
+     * {@link com.android.providers.telephony.CarrierIdProvider}.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final String ACTION_UPDATE_CARRIER_ID_DB
+            = "android.os.action.UPDATE_CARRIER_ID_DB";
+
     private ConfigUpdate() {
     }
 }

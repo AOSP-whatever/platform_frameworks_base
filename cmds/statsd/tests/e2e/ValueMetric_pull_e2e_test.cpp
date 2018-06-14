@@ -48,7 +48,7 @@ StatsdConfig CreateStatsdConfig() {
     *valueMetric->mutable_dimensions_in_what() =
         CreateDimensions(android::util::TEMPERATURE, {2/* sensor name field */ });
     valueMetric->set_bucket(FIVE_MINUTES);
-
+    valueMetric->set_use_absolute_value_on_reset(true);
     return config;
 }
 
@@ -66,6 +66,7 @@ TEST(ValueMetricE2eTest, TestPulledEvents) {
         baseTimeNs, configAddedTimeNs, config, cfgKey);
     EXPECT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
+    processor->mStatsPullerManager.ForceClearPullerCache();
 
     int startBucketNum = processor->mMetricsManagers.begin()->second->
             mAllMetricProducers[0]->getCurrentBucketNum();
@@ -121,6 +122,9 @@ TEST(ValueMetricE2eTest, TestPulledEvents) {
                             &buffer);
     EXPECT_TRUE(buffer.size() > 0);
     EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
     EXPECT_EQ(1, reports.reports_size());
     EXPECT_EQ(1, reports.reports(0).metrics_size());
     StatsLogReport::ValueMetricDataWrapper valueMetrics;
@@ -169,6 +173,7 @@ TEST(ValueMetricE2eTest, TestPulledEvents_LateAlarm) {
         baseTimeNs, configAddedTimeNs, config, cfgKey);
     EXPECT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
+    processor->mStatsPullerManager.ForceClearPullerCache();
 
     int startBucketNum = processor->mMetricsManagers.begin()->second->
             mAllMetricProducers[0]->getCurrentBucketNum();
@@ -225,6 +230,9 @@ TEST(ValueMetricE2eTest, TestPulledEvents_LateAlarm) {
                             &buffer);
     EXPECT_TRUE(buffer.size() > 0);
     EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
     EXPECT_EQ(1, reports.reports_size());
     EXPECT_EQ(1, reports.reports(0).metrics_size());
     StatsLogReport::ValueMetricDataWrapper valueMetrics;

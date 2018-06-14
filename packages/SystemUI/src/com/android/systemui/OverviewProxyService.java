@@ -66,6 +66,7 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
     public static final String TAG_OPS = "OverviewProxyService";
     public static final boolean DEBUG_OVERVIEW_PROXY = false;
     private static final long BACKOFF_MILLIS = 5000;
+    private static final long DEFERRED_CALLBACK_MILLIS = 5000;
 
     private final Context mContext;
     private final Handler mHandler;
@@ -160,6 +161,23 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
                 Binder.restoreCallingIdentity(token);
             }
         }
+
+        public void setBackButtonAlpha(float alpha, boolean animate) {
+            long token = Binder.clearCallingIdentity();
+            try {
+                mHandler.post(() -> {
+                    notifyBackButtonAlphaChanged(alpha, animate);
+                });
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+    };
+
+    private final Runnable mDeferredConnectionCallback = () -> {
+        Log.w(TAG_OPS, "Binder supposed established connection but actual connection to service "
+            + "timed out, trying again");
+        internalConnectToCurrentUser();
     };
 
     private final BroadcastReceiver mLauncherStateChangedReceiver = new BroadcastReceiver() {
@@ -181,22 +199,33 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
     private final ServiceConnection mOverviewServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            if (service != null) {
-                mConnectionBackoffAttempts = 0;
-                mOverviewProxy = IOverviewProxy.Stub.asInterface(service);
-                // Listen for launcher's death
-                try {
-                    service.linkToDeath(mOverviewServiceDeathRcpt, 0);
-                } catch (RemoteException e) {
-                    Log.e(TAG_OPS, "Lost connection to launcher service", e);
-                }
-                try {
-                    mOverviewProxy.onBind(mSysUiProxy);
-                } catch (RemoteException e) {
-                    Log.e(TAG_OPS, "Failed to call onBind()", e);
-                }
-                notifyConnectionChanged();
+            mHandler.removeCallbacks(mDeferredConnectionCallback);
+            mConnectionBackoffAttempts = 0;
+            mOverviewProxy = IOverviewProxy.Stub.asInterface(service);
+            // Listen for launcher's death
+            try {
+                service.linkToDeath(mOverviewServiceDeathRcpt, 0);
+            } catch (RemoteException e) {
+                Log.e(TAG_OPS, "Lost connection to launcher service", e);
             }
+            try {
+                mOverviewProxy.onBind(mSysUiProxy);
+            } catch (RemoteException e) {
+                Log.e(TAG_OPS, "Failed to call onBind()", e);
+            }
+            notifyConnectionChanged();
+        }
+
+        @Override
+        public void onNullBinding(ComponentName name) {
+            Log.w(TAG_OPS, "Null binding of '" + name + "', try reconnecting");
+            internalConnectToCurrentUser();
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            Log.w(TAG_OPS, "Binding died of '" + name + "', try reconnecting");
+            internalConnectToCurrentUser();
         }
 
         @Override
@@ -262,6 +291,9 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
 
         // If user has not setup yet or already connected, do not try to connect
         if (!mDeviceProvisionedController.isCurrentUserSetup() || !isEnabled()) {
+            Log.v(TAG_OPS, "Cannot attempt connection, is setup "
+                + mDeviceProvisionedController.isCurrentUserSetup() + ", is enabled "
+                + isEnabled());
             return;
         }
         mHandler.removeCallbacks(mConnectionRunnable);
@@ -275,11 +307,16 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
         } catch (SecurityException e) {
             Log.e(TAG_OPS, "Unable to bind because of security error", e);
         }
-        if (!bound) {
+        if (bound) {
+            // Ensure that connection has been established even if it thinks it is bound
+            mHandler.postDelayed(mDeferredConnectionCallback, DEFERRED_CALLBACK_MILLIS);
+        } else {
             // Retry after exponential backoff timeout
             final long timeoutMs = (long) Math.scalb(BACKOFF_MILLIS, mConnectionBackoffAttempts);
             mHandler.postDelayed(mConnectionRunnable, timeoutMs);
             mConnectionBackoffAttempts++;
+            Log.w(TAG_OPS, "Failed to connect on attempt " + mConnectionBackoffAttempts
+                    + " will try again in " + timeoutMs + "ms");
         }
     }
 
@@ -316,7 +353,14 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
             mOverviewProxy.asBinder().unlinkToDeath(mOverviewServiceDeathRcpt, 0);
             mContext.unbindService(mOverviewServiceConnection);
             mOverviewProxy = null;
+            notifyBackButtonAlphaChanged(1f, false /* animate */);
             notifyConnectionChanged();
+        }
+    }
+
+    private void notifyBackButtonAlphaChanged(float alpha, boolean animate) {
+        for (int i = mConnectionCallbacks.size() - 1; i >= 0; --i) {
+            mConnectionCallbacks.get(i).onBackButtonAlphaChanged(alpha, animate);
         }
     }
 
@@ -351,6 +395,10 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
         pw.print("  isCurrentUserSetup="); pw.println(mDeviceProvisionedController
                 .isCurrentUserSetup());
         pw.print("  isConnected="); pw.println(mOverviewProxy != null);
+        pw.print("  mRecentsComponentName="); pw.println(mRecentsComponentName);
+        pw.print("  mIsEnabled="); pw.println(isEnabled());
+        pw.print("  mInteractionFlags="); pw.println(mInteractionFlags);
+        pw.print("  mQuickStepIntent="); pw.println(mQuickStepIntent);
     }
 
     public interface OverviewProxyListener {
@@ -359,5 +407,6 @@ public class OverviewProxyService implements CallbackController<OverviewProxyLis
         default void onInteractionFlagsChanged(@InteractionType int flags) {}
         default void onOverviewShown(boolean fromHome) {}
         default void onQuickScrubStarted() {}
+        default void onBackButtonAlphaChanged(float alpha, boolean animate) {}
     }
 }

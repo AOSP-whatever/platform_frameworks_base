@@ -189,7 +189,14 @@ public final class ColorDisplayService extends SystemService
         mController = new ColorDisplayController(getContext(), mCurrentUser);
         mController.setListener(this);
 
-        setCoefficientMatrix(getContext(), DisplayTransformManager.isNativeModeEnabled());
+        // Set the color mode, if valid, and immediately apply the updated tint matrix based on the
+        // existing activated state. This ensures consistency of tint across the color mode change.
+        onDisplayColorModeChanged(mController.getColorMode());
+
+        // Reset the activated state.
+        mIsActivated = null;
+
+        setCoefficientMatrix(getContext(), DisplayTransformManager.needsLinearColorMatrix());
 
         // Prepare color transformation matrix.
         setMatrix(mController.getColorTemperature(), mMatrixNight);
@@ -201,9 +208,6 @@ public final class ColorDisplayService extends SystemService
         if (mIsActivated == null) {
             onActivated(mController.isActivated());
         }
-
-        // Transition the screen to the current temperature.
-        applyTint(false);
     }
 
     private void tearDown() {
@@ -223,8 +227,6 @@ public final class ColorDisplayService extends SystemService
             mColorMatrixAnimator.end();
             mColorMatrixAnimator = null;
         }
-
-        mIsActivated = null;
     }
 
     @Override
@@ -288,16 +290,21 @@ public final class ColorDisplayService extends SystemService
 
     @Override
     public void onDisplayColorModeChanged(int mode) {
+        if (mode == -1) {
+            return;
+        }
+
         // Cancel the night display tint animator if it's running.
         if (mColorMatrixAnimator != null) {
             mColorMatrixAnimator.cancel();
         }
 
-        setCoefficientMatrix(getContext(), DisplayTransformManager.isColorModeNative(mode));
+        setCoefficientMatrix(getContext(), DisplayTransformManager.needsLinearColorMatrix(mode));
         setMatrix(mController.getColorTemperature(), mMatrixNight);
 
         final DisplayTransformManager dtm = getLocalService(DisplayTransformManager.class);
-        dtm.setColorMode(mode, mIsActivated ? mMatrixNight : MATRIX_IDENTITY);
+        dtm.setColorMode(mode, (mIsActivated != null && mIsActivated) ? mMatrixNight
+                : MATRIX_IDENTITY);
     }
 
     @Override
@@ -306,13 +313,12 @@ public final class ColorDisplayService extends SystemService
     }
 
     /**
-     * Set coefficients based on native mode. Use DisplayTransformManager#isNativeModeEnabled while
-     * setting is stable; when setting is changing, pass native mode selection directly.
+     * Set coefficients based on whether the color matrix is linear or not.
      */
-    private void setCoefficientMatrix(Context context, boolean isNative) {
-        final String[] coefficients = context.getResources().getStringArray(isNative
-                ? R.array.config_nightDisplayColorTemperatureCoefficientsNative
-                : R.array.config_nightDisplayColorTemperatureCoefficients);
+    private void setCoefficientMatrix(Context context, boolean needsLinear) {
+        final String[] coefficients = context.getResources().getStringArray(needsLinear
+                ? R.array.config_nightDisplayColorTemperatureCoefficients
+                : R.array.config_nightDisplayColorTemperatureCoefficientsNative);
         for (int i = 0; i < 9 && i < coefficients.length; i++) {
             mColorTempCoefficients[i] = Float.parseFloat(coefficients[i]);
         }

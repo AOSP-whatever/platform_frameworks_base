@@ -1132,8 +1132,7 @@ public final class AutofillManager {
             if (mSaveTriggerId != null && mSaveTriggerId.equals(id)) {
                 if (sDebug) Log.d(TAG, "triggering commit by click of " + id);
                 commitLocked();
-                mMetricsLogger.action(MetricsEvent.AUTOFILL_SAVE_EXPLICITLY_TRIGGERED,
-                        mContext.getPackageName());
+                mMetricsLogger.write(newLog(MetricsEvent.AUTOFILL_SAVE_EXPLICITLY_TRIGGERED));
             }
         }
     }
@@ -1893,12 +1892,27 @@ public final class AutofillManager {
                 }
             }
 
-            final LogMaker log = new LogMaker(MetricsEvent.AUTOFILL_DATASET_APPLIED)
-                    .setPackageName(mContext.getPackageName())
+            mMetricsLogger.write(newLog(MetricsEvent.AUTOFILL_DATASET_APPLIED)
                     .addTaggedData(MetricsEvent.FIELD_AUTOFILL_NUM_VALUES, itemCount)
-                    .addTaggedData(MetricsEvent.FIELD_AUTOFILL_NUM_VIEWS_FILLED, numApplied);
-            mMetricsLogger.write(log);
+                    .addTaggedData(MetricsEvent.FIELD_AUTOFILL_NUM_VIEWS_FILLED, numApplied));
         }
+    }
+
+    private LogMaker newLog(int category) {
+        final LogMaker log = new LogMaker(category)
+                .addTaggedData(MetricsEvent.FIELD_AUTOFILL_SESSION_ID, mSessionId);
+
+        if (isCompatibilityModeEnabledLocked()) {
+            log.addTaggedData(MetricsEvent.FIELD_AUTOFILL_COMPAT_MODE, 1);
+        }
+        final AutofillClient client = getClient();
+        if (client == null) {
+            // Client should never be null here, but it doesn't hurt to check...
+            log.setPackageName(mContext.getPackageName());
+        } else {
+            log.setComponentName(client.autofillClientGetComponentName());
+        }
+        return log;
     }
 
     /**

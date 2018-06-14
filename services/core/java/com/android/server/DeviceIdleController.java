@@ -812,9 +812,9 @@ public class DeviceIdleController extends SystemService
 
                 LIGHT_IDLE_AFTER_INACTIVE_TIMEOUT = mParser.getDurationMillis(
                         KEY_LIGHT_IDLE_AFTER_INACTIVE_TIMEOUT,
-                        !COMPRESS_TIME ? 5 * 60 * 1000L : 15 * 1000L);
+                        !COMPRESS_TIME ? 3 * 60 * 1000L : 15 * 1000L);
                 LIGHT_PRE_IDLE_TIMEOUT = mParser.getDurationMillis(KEY_LIGHT_PRE_IDLE_TIMEOUT,
-                        !COMPRESS_TIME ? 10 * 60 * 1000L : 30 * 1000L);
+                        !COMPRESS_TIME ? 3 * 60 * 1000L : 30 * 1000L);
                 LIGHT_IDLE_TIMEOUT = mParser.getDurationMillis(KEY_LIGHT_IDLE_TIMEOUT,
                         !COMPRESS_TIME ? 5 * 60 * 1000L : 15 * 1000L);
                 LIGHT_IDLE_FACTOR = mParser.getFloat(KEY_LIGHT_IDLE_FACTOR,
@@ -1540,7 +1540,7 @@ public class DeviceIdleController extends SystemService
 
                 mLocalActivityManager.registerScreenObserver(mScreenObserver);
 
-                passWhiteListToForceAppStandbyTrackerLocked();
+                passWhiteListsToForceAppStandbyTrackerLocked();
                 updateInteractivityLocked();
             }
             updateConnectivityState(null);
@@ -1631,7 +1631,7 @@ public class DeviceIdleController extends SystemService
                             mPowerSaveWhitelistAppsExceptIdle, mPowerSaveWhitelistUserApps,
                             mPowerSaveWhitelistExceptIdleAppIds);
 
-                    passWhiteListToForceAppStandbyTrackerLocked();
+                    passWhiteListsToForceAppStandbyTrackerLocked();
                 }
                 return true;
             } catch (PackageManager.NameNotFoundException e) {
@@ -1650,7 +1650,7 @@ public class DeviceIdleController extends SystemService
                         mPowerSaveWhitelistExceptIdleAppIds);
                 mPowerSaveWhitelistUserAppsExceptIdle.clear();
 
-                passWhiteListToForceAppStandbyTrackerLocked();
+                passWhiteListsToForceAppStandbyTrackerLocked();
             }
         }
     }
@@ -2589,7 +2589,7 @@ public class DeviceIdleController extends SystemService
             }
             mLocalPowerManager.setDeviceIdleWhitelist(mPowerSaveWhitelistAllAppIdArray);
         }
-        passWhiteListToForceAppStandbyTrackerLocked();
+        passWhiteListsToForceAppStandbyTrackerLocked();
     }
 
     private void updateTempWhitelistAppIdsLocked(int appId, boolean adding) {
@@ -2615,7 +2615,7 @@ public class DeviceIdleController extends SystemService
             }
             mLocalPowerManager.setDeviceIdleTempWhitelist(mTempWhitelistAppIdArray);
         }
-        passWhiteListToForceAppStandbyTrackerLocked();
+        passWhiteListsToForceAppStandbyTrackerLocked();
     }
 
     private void reportPowerSaveWhitelistChangedLocked() {
@@ -2630,9 +2630,10 @@ public class DeviceIdleController extends SystemService
         getContext().sendBroadcastAsUser(intent, UserHandle.SYSTEM);
     }
 
-    private void passWhiteListToForceAppStandbyTrackerLocked() {
+    private void passWhiteListsToForceAppStandbyTrackerLocked() {
         mAppStateTracker.setPowerSaveWhitelistAppIds(
                 mPowerSaveWhitelistExceptIdleAppIdArray,
+                mPowerSaveWhitelistUserAppIdArray,
                 mTempWhitelistAppIdArray);
     }
 

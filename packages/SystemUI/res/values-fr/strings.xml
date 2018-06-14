@@ -95,6 +95,7 @@
     <string name="accessibility_unlock_button" msgid="128158454631118828">"Déverrouiller"</string>
     <string name="accessibility_waiting_for_fingerprint" msgid="4808860050517462885">"Attente de l\'empreinte digitale"</string>
     <string name="accessibility_unlock_without_fingerprint" msgid="7541705575183694446">"Déverrouiller le système sans utiliser votre empreinte digitale"</string>
+    <string name="accessibility_scanning_face" msgid="769545173211758586">"Analyse du visage en cours"</string>
     <string name="accessibility_send_smart_reply" msgid="7766727839703044493">"Envoyer"</string>
     <string name="unlock_label" msgid="8779712358041029439">"déverrouiller"</string>
     <string name="phone_label" msgid="2320074140205331708">"ouvrir le téléphone"</string>
@@ -258,6 +259,7 @@
     <string name="accessibility_location_active" msgid="2427290146138169014">"Demandes de localisation actives"</string>
     <string name="accessibility_clear_all" msgid="5235938559247164925">"Supprimer toutes les notifications"</string>
     <string name="notification_group_overflow_indicator" msgid="1863231301642314183">"<xliff:g id="NUMBER">%s</xliff:g> autres"</string>
+    <string name="notification_group_overflow_indicator_ambient" msgid="879560382990377886">"<xliff:g id="NOTIFICATION_TITLE">%s</xliff:g> + <xliff:g id="OVERFLOW">%s</xliff:g>"</string>
     <plurals name="notification_group_overflow_description" formatted="false" msgid="4579313201268495404">
       <item quantity="one"><xliff:g id="NUMBER_1">%s</xliff:g> autre notification à l\'intérieur.</item>
       <item quantity="other"><xliff:g id="NUMBER_1">%s</xliff:g> autres notifications à l\'intérieur.</item>
@@ -369,6 +371,7 @@
     <string name="recents_accessibility_split_screen_top" msgid="9056056469282256287">"Partager l\'écran en haut"</string>
     <string name="recents_accessibility_split_screen_left" msgid="8987144699630620019">"Partager l\'écran sur la gauche"</string>
     <string name="recents_accessibility_split_screen_right" msgid="275069779299592867">"Partager l\'écran sur la droite"</string>
+    <string name="quick_step_accessibility_toggle_overview" msgid="7171470775439860480">"Activer/Désactiver l\'aperçu"</string>
     <string name="expanded_header_battery_charged" msgid="5945855970267657951">"Chargé"</string>
     <string name="expanded_header_battery_charging" msgid="205623198487189724">"En charge"</string>
     <string name="expanded_header_battery_charging_with_time" msgid="457559884275395376">"Chargé dans <xliff:g id="CHARGING_TIME">%s</xliff:g>"</string>
@@ -435,7 +438,8 @@
     <string name="media_projection_remember_text" msgid="3103510882172746752">"Ne plus afficher"</string>
     <string name="clear_all_notifications_text" msgid="814192889771462828">"Tout effacer"</string>
     <string name="manage_notifications_text" msgid="8035284146227267681">"Gérer les notifications"</string>
-    <string name="dnd_suppressing_shade_text" msgid="5179021215370153526">"Le mode Ne pas déranger masque les notifications"</string>
+    <!-- no translation found for dnd_suppressing_shade_text (1904574852846769301) -->
+    <skip />
     <string name="media_projection_action_text" msgid="8470872969457985954">"Commencer"</string>
     <string name="empty_shade_text" msgid="708135716272867002">"Aucune notification"</string>
     <string name="profile_owned_footer" msgid="8021888108553696069">"Le profil peut être contrôlé."</string>
@@ -542,6 +546,9 @@
     <string name="volume_stream_content_description_mute" msgid="3625049841390467354">"%1$s. Appuyez pour ignorer. Vous pouvez ignorer les services d\'accessibilité."</string>
     <string name="volume_stream_content_description_vibrate_a11y" msgid="6427727603978431301">"%1$s. Appuyez pour mettre en mode vibreur."</string>
     <string name="volume_stream_content_description_mute_a11y" msgid="8995013018414535494">"%1$s. Appuyez pour ignorer."</string>
+    <string name="volume_ringer_hint_mute" msgid="9199811307292269601">"couper le son"</string>
+    <string name="volume_ringer_hint_unmute" msgid="6602880133293060368">"réactiver le son"</string>
+    <string name="volume_ringer_hint_vibrate" msgid="4036802135666515202">"activer le vibreur"</string>
     <string name="volume_dialog_title" msgid="7272969888820035876">"Commandes de volume %s"</string>
     <string name="volume_dialog_ringer_guidance_ring" msgid="3360373718388509040">"Sons activés pour les appels et les notifications (<xliff:g id="VOLUME_LEVEL">%1$s</xliff:g>)"</string>
     <string name="output_title" msgid="5355078100792942802">"Sortie multimédia"</string>
@@ -607,17 +614,13 @@
     <string name="inline_minimize_button" msgid="966233327974702195">"Réduire"</string>
     <string name="inline_keep_showing_app" msgid="1723113469580031041">"Continuer d\'afficher les notifications de cette application ?"</string>
     <string name="notification_unblockable_desc" msgid="1037434112919403708">"Ces notifications ne peuvent pas être désactivées"</string>
-    <string name="notification_appops_camera_active" msgid="730959943016785931">"l\'appareil photo"</string>
-    <string name="notification_appops_microphone_active" msgid="1546319728924580686">"le micro"</string>
-    <string name="notification_appops_overlay_active" msgid="633813008357934729">"se superpose aux autres applications sur l\'écran"</string>
-    <plurals name="notification_appops" formatted="false" msgid="1258122060887196817">
-      <item quantity="one">Cette application <xliff:g id="PERFORMING_ACTIVITY_1">%1$s</xliff:g> et <xliff:g id="PERFORMING_ACTIVITY_2">%2$s</xliff:g>.</item>
-      <item quantity="other">Ces applications <xliff:g id="PERFORMING_ACTIVITY_1">%1$s</xliff:g> et <xliff:g id="PERFORMING_ACTIVITY_2">%2$s</xliff:g>.</item>
-    </plurals>
-    <plurals name="notification_using" formatted="false" msgid="2211008461429037973">
-      <item quantity="one">utilise <xliff:g id="PERFORMING_ACTIVITY_1">%1$s</xliff:g> et <xliff:g id="PERFORMING_ACTIVITY_2">%2$s</xliff:g></item>
-      <item quantity="other">utilisent <xliff:g id="PERFORMING_ACTIVITY_1">%1$s</xliff:g> et <xliff:g id="PERFORMING_ACTIVITY_2">%2$s</xliff:g></item>
-    </plurals>
+    <string name="appops_camera" msgid="8100147441602585776">"Cette application utilise la caméra."</string>
+    <string name="appops_microphone" msgid="741508267659494555">"Cette application utilise le micro."</string>
+    <string name="appops_overlay" msgid="6165912637560323464">"Cette application se superpose aux autres applications sur l\'écran."</string>
+    <string name="appops_camera_mic" msgid="1576901651150187433">"Cette application utilise le micro et la caméra."</string>
+    <string name="appops_camera_overlay" msgid="8869400080809298814">"Cette application se superpose aux autres applications sur l\'écran et utilise la caméra."</string>
+    <string name="appops_mic_overlay" msgid="4835157962857919804">"Cette application se superpose aux autres applications sur l\'écran et utilise le micro."</string>
+    <string name="appops_camera_mic_overlay" msgid="6718768197048030993">"Cette application se superpose aux autres applications sur l\'écran, et utilise le micro et la caméra."</string>
     <string name="notification_appops_settings" msgid="1028328314935908050">"Paramètres"</string>
     <string name="notification_appops_ok" msgid="1156966426011011434">"OK"</string>
     <string name="notification_channel_controls_opened_accessibility" msgid="6553950422055908113">"Les commandes de notification sont disponibles pour <xliff:g id="APP_NAME">%1$s</xliff:g>"</string>
@@ -853,4 +856,5 @@
     <string name="auto_saver_enabled_text" msgid="874711029884777579">"L\'économiseur de batterie s\'active automatiquement lorsque l\'autonomie de la batterie est inférieure à <xliff:g id="PERCENTAGE">%d</xliff:g> %%."</string>
     <string name="open_saver_setting_action" msgid="8314624730997322529">"Paramètres"</string>
     <string name="auto_saver_okay_action" msgid="2701221740227683650">"OK"</string>
+    <string name="heap_dump_tile_name" msgid="9141031328971226374">"Copier mémoire SysUI"</string>
 </resources>

@@ -47,6 +47,7 @@ import com.android.systemui.Dependency;
 import com.android.systemui.Interpolators;
 import com.android.systemui.R;
 import com.android.systemui.keyguard.KeyguardSliceProvider;
+import com.android.systemui.statusbar.AlphaOptimizedTextView;
 import com.android.systemui.statusbar.policy.ConfigurationController;
 import com.android.systemui.tuner.TunerService;
 import com.android.systemui.util.wakelock.KeepAwakeAnimationListener;
@@ -57,6 +58,7 @@ import java.util.function.Consumer;
 
 import androidx.slice.Slice;
 import androidx.slice.SliceItem;
+import androidx.slice.SliceViewManager;
 import androidx.slice.core.SliceQuery;
 import androidx.slice.widget.ListContent;
 import androidx.slice.widget.RowContent;
@@ -82,10 +84,9 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
     private LiveData<Slice> mLiveData;
     private int mIconSize;
     /**
-     * Listener called whenever the view contents change.
-     * Boolean will be true when the change happens animated.
+     * Runnable called whenever the view contents change.
      */
-    private Consumer<Boolean> mContentChangeListener;
+    private Runnable mContentChangeListener;
     private boolean mHasHeader;
     private Slice mSlice;
     private boolean mPulsing;
@@ -145,14 +146,12 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
     }
 
     private void showSlice() {
-        if (mPulsing) {
+        if (mPulsing || mSlice == null) {
             mTitle.setVisibility(GONE);
             mRow.setVisibility(GONE);
-            mContentChangeListener.accept(getLayoutTransition() != null);
-            return;
-        }
-
-        if (mSlice == null) {
+            if (mContentChangeListener != null) {
+                mContentChangeListener.run();
+            }
             return;
         }
 
@@ -170,18 +169,6 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
             SliceItem mainTitle = header.getTitleItem();
             CharSequence title = mainTitle != null ? mainTitle.getText() : null;
             mTitle.setText(title);
-
-            // Check if we're already ellipsizing the text.
-            // We're going to figure out the best possible line break if not.
-            Layout layout = mTitle.getLayout();
-            if (layout != null){
-                final int lineCount = layout.getLineCount();
-                if (lineCount > 0) {
-                    if (layout.getEllipsisCount(lineCount - 1) == 0) {
-                        mTitle.setText(findBestLineBreak(title));
-                    }
-                }
-            }
         }
 
         mClickActions.clear();
@@ -211,6 +198,7 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
 
             final SliceItem titleItem = rc.getTitleItem();
             button.setText(titleItem == null ? null : titleItem.getText());
+            button.setContentDescription(rc.getContentDescription());
 
             Drawable iconDrawable = null;
             SliceItem icon = SliceQuery.find(item.getSlice(),
@@ -236,7 +224,7 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
         }
 
         if (mContentChangeListener != null) {
-            mContentChangeListener.accept(getLayoutTransition() != null);
+            mContentChangeListener.run();
         }
     }
 
@@ -259,7 +247,7 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
      * @param charSequence Original text.
      * @return Optimal string.
      */
-    private CharSequence findBestLineBreak(CharSequence charSequence) {
+    private static CharSequence findBestLineBreak(CharSequence charSequence) {
         if (TextUtils.isEmpty(charSequence)) {
             return charSequence;
         }
@@ -323,11 +311,10 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
     }
 
     /**
-     * Listener that gets invoked every time the title or the row visibility changes.
-     * Parameter will be {@code true} whenever the change happens animated.
+     * Runnable that gets invoked every time the title or the row visibility changes.
      * @param contentChangeListener The listener.
      */
-    public void setContentChangeListener(Consumer<Boolean> contentChangeListener) {
+    public void setContentChangeListener(Runnable contentChangeListener) {
         mContentChangeListener = contentChangeListener;
     }
 
@@ -383,6 +370,11 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
     @Override
     public void onDensityOrFontScaleChanged() {
         mIconSize = mContext.getResources().getDimensionPixelSize(R.dimen.widget_icon_size);
+    }
+
+    public void refresh() {
+        Slice slice = SliceViewManager.getInstance(getContext()).bindSlice(mKeyguardSliceUri);
+        onChanged(slice);
     }
 
     public static class Row extends LinearLayout {
@@ -446,10 +438,11 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int width = MeasureSpec.getSize(widthMeasureSpec);
-            for (int i = 0; i < getChildCount(); i++) {
+            int childCount = getChildCount();
+            for (int i = 0; i < childCount; i++) {
                 View child = getChildAt(i);
                 if (child instanceof KeyguardSliceButton) {
-                    ((KeyguardSliceButton) child).setMaxWidth(width / 2);
+                    ((KeyguardSliceButton) child).setMaxWidth(width / childCount);
                 }
             }
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -477,12 +470,10 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
     @VisibleForTesting
     static class KeyguardSliceButton extends Button implements
             ConfigurationController.ConfigurationListener {
-        private final Context mContext;
 
         public KeyguardSliceButton(Context context) {
             super(context, null /* attrs */, 0 /* styleAttr */,
                     com.android.keyguard.R.style.TextAppearance_Keyguard_Secondary);
-            mContext = context;
             onDensityOrFontScaleChanged();
             setEllipsize(TruncateAt.END);
         }
@@ -501,9 +492,20 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
 
         @Override
         public void onDensityOrFontScaleChanged() {
-            int horizontalPadding = (int) mContext.getResources()
-                    .getDimension(R.dimen.widget_horizontal_padding);
-            setPadding(horizontalPadding / 2, 0, horizontalPadding / 2, 0);
+            updatePadding();
+        }
+
+        @Override
+        public void setText(CharSequence text, BufferType type) {
+            super.setText(text, type);
+            updatePadding();
+        }
+
+        private void updatePadding() {
+            boolean hasText = !TextUtils.isEmpty(getText());
+            int horizontalPadding = (int) getContext().getResources()
+                    .getDimension(R.dimen.widget_horizontal_padding) / 2;
+            setPadding(horizontalPadding, 0, horizontalPadding * (hasText ? 1 : -1), 0);
             setCompoundDrawablePadding((int) mContext.getResources()
                     .getDimension(R.dimen.widget_icon_padding));
         }
@@ -519,6 +521,7 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
                 Drawable bottom) {
             super.setCompoundDrawables(left, top, right, bottom);
             updateDrawableColors();
+            updatePadding();
         }
 
         private void updateDrawableColors() {
@@ -526,6 +529,46 @@ public class KeyguardSliceView extends LinearLayout implements View.OnClickListe
             for (Drawable drawable : getCompoundDrawables()) {
                 if (drawable != null) {
                     drawable.setTint(color);
+                }
+            }
+        }
+    }
+
+    /**
+     * A text view that will split its contents in 2 lines when possible.
+     */
+    static class TitleView extends AlphaOptimizedTextView {
+
+        public TitleView(Context context) {
+            super(context);
+        }
+
+        public TitleView(Context context, AttributeSet attrs) {
+            super(context, attrs);
+        }
+
+        public TitleView(Context context, AttributeSet attrs, int defStyleAttr) {
+            super(context, attrs, defStyleAttr);
+        }
+
+        public TitleView(Context context, AttributeSet attrs, int defStyleAttr,
+                int defStyleRes) {
+            super(context, attrs, defStyleAttr, defStyleRes);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+
+            Layout layout = getLayout();
+            int lineCount = layout.getLineCount();
+            boolean ellipsizing = layout.getEllipsisCount(lineCount - 1) != 0;
+            if (lineCount > 0 && !ellipsizing) {
+                CharSequence title = getText();
+                CharSequence bestLineBreak = findBestLineBreak(title);
+                if (!TextUtils.equals(title, bestLineBreak)) {
+                    setText(bestLineBreak);
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 }
             }
         }

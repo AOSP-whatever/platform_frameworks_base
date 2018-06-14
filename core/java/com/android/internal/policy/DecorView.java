@@ -41,7 +41,6 @@ import java.util.List;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
-import android.app.ActivityManager;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -55,7 +54,6 @@ import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.os.RemoteException;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -310,10 +308,8 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
     public void onDraw(Canvas c) {
         super.onDraw(c);
 
-        // When we are resizing, we need the fallback background to cover the area where we have our
-        // system bar background views as the navigation bar will be hidden during resizing.
-        mBackgroundFallback.draw(isResizing() ? this : mContentRoot, mContentRoot, c,
-                mWindow.mContentParent);
+        mBackgroundFallback.draw(this, mContentRoot, c, mWindow.mContentParent,
+                mStatusColorViewState.view, mNavigationColorViewState.view);
     }
 
     @Override
@@ -433,7 +429,7 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
             return true;
         }
 
-        return (getViewRootImpl() != null) && getViewRootImpl().dispatchKeyFallbackEvent(event);
+        return (getViewRootImpl() != null) && getViewRootImpl().dispatchUnhandledKeyEvent(event);
     }
 
     public boolean superDispatchKeyShortcutEvent(KeyEvent event) {
@@ -987,14 +983,14 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
             if (attrs.height == WindowManager.LayoutParams.WRAP_CONTENT) {
                 mFloatingInsets.top = insets.getSystemWindowInsetTop();
                 mFloatingInsets.bottom = insets.getSystemWindowInsetBottom();
-                insets = insets.replaceSystemWindowInsets(insets.getSystemWindowInsetLeft(), 0,
-                        insets.getSystemWindowInsetRight(), 0);
+                insets = insets.inset(0, insets.getSystemWindowInsetTop(),
+                        0, insets.getSystemWindowInsetBottom());
             }
             if (mWindow.getAttributes().width == WindowManager.LayoutParams.WRAP_CONTENT) {
                 mFloatingInsets.left = insets.getSystemWindowInsetTop();
                 mFloatingInsets.right = insets.getSystemWindowInsetBottom();
-                insets = insets.replaceSystemWindowInsets(0, insets.getSystemWindowInsetTop(),
-                        0, insets.getSystemWindowInsetBottom());
+                insets = insets.inset(insets.getSystemWindowInsetLeft(), 0,
+                        insets.getSystemWindowInsetRight(), 0);
             }
         }
         mFrameOffsets.set(insets.getSystemWindowInsets());
@@ -1162,11 +1158,7 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
                 }
             }
             if (insets != null) {
-                insets = insets.replaceSystemWindowInsets(
-                        insets.getSystemWindowInsetLeft() - consumedLeft,
-                        insets.getSystemWindowInsetTop() - consumedTop,
-                        insets.getSystemWindowInsetRight() - consumedRight,
-                        insets.getSystemWindowInsetBottom() - consumedBottom);
+                insets = insets.inset(consumedLeft, consumedTop, consumedRight, consumedBottom);
             }
         }
 
@@ -1387,8 +1379,9 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
                     // screen_simple_overlay_action_mode.xml).
                     final boolean nonOverlay = (mWindow.getLocalFeaturesPrivate()
                             & (1 << Window.FEATURE_ACTION_MODE_OVERLAY)) == 0;
-                    insets = insets.consumeSystemWindowInsets(
-                            false, nonOverlay && showStatusGuard /* top */, false, false);
+                    if (nonOverlay && showStatusGuard) {
+                        insets = insets.inset(0, insets.getSystemWindowInsetTop(), 0, 0);
+                    }
                 } else {
                     // reset top margin
                     if (mlp.topMargin != 0) {
@@ -1841,6 +1834,13 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
             DecorContext decorContext = (DecorContext) context;
             decorContext.setPhoneWindow(mWindow);
         }
+    }
+
+    @Override
+    public Resources getResources() {
+        // Make sure the Resources object is propogated from the Context since it can be updated in
+        // the Context object.
+        return getContext().getResources();
     }
 
     @Override

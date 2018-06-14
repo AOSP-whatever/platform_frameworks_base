@@ -92,8 +92,6 @@ public class MessagingTextMessage extends ImageFloatingTextView implements Messa
 
     public void recycle() {
         MessagingMessage.super.recycle();
-        setAlpha(1.0f);
-        setTranslationY(0);
         sInstancePool.release(this);
     }
 
@@ -105,7 +103,7 @@ public class MessagingTextMessage extends ImageFloatingTextView implements Messa
     public int getMeasuredType() {
         boolean measuredTooSmall = getMeasuredHeight()
                 < getLayoutHeight() + getPaddingTop() + getPaddingBottom();
-        if (measuredTooSmall) {
+        if (measuredTooSmall && getLineCount() <= 1) {
             return MEASURED_TOO_SMALL;
         } else {
             Layout layout = getLayout();

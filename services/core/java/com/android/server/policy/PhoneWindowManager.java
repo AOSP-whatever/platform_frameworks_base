@@ -267,6 +267,7 @@ import com.android.internal.accessibility.AccessibilityShortcutController;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.nano.MetricsProto;
 import com.android.internal.policy.IKeyguardDismissCallback;
 import com.android.internal.policy.IShortcutService;
 import com.android.internal.policy.KeyguardDismissCallback;
@@ -460,11 +461,15 @@ public class PhoneWindowManager implements WindowManagerPolicy {
      */
     private final Object mLock = new Object();
 
+    private static final boolean SCROLL_BOOST_SS_ENABLE =
+                    SystemProperties.getBoolean("vendor.perf.gestureflingboost.enable", false);
+
     /*
      * @hide
      */
-    BoostFramework mPerfBoost = null;
-
+    BoostFramework mPerfBoostDrag = null;
+    BoostFramework mPerfBoostFling = null;
+    BoostFramework mPerfBoostPrefling = null;
     Context mContext;
     IWindowManager mWindowManager;
     WindowManagerFuncs mWindowManagerFuncs;
@@ -489,6 +494,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     private ScreenshotHelper mScreenshotHelper;
     private boolean mHasFeatureWatch;
     private boolean mHasFeatureLeanback;
+    private boolean mIsPerfBoostFlingAcquired;
 
     // Assigned on main thread, accessed on UI thread
     volatile VrManagerInternal mVrManagerInternal;
@@ -639,6 +645,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     boolean mUseTvRouting;
     int mVeryLongPressTimeout;
     boolean mAllowStartActivityForLongPressOnPowerDuringSetup;
+    MetricsLogger mLogger;
 
     private boolean mHandleVolumeKeysInWM;
 
@@ -821,9 +828,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
     private int mCurrentUserId;
 
-    /* Whether accessibility is magnifying the screen */
-    private boolean mScreenMagnificationActive;
-
     // Maps global key codes to the components that will handle them.
     private GlobalKeyManager mGlobalKeyManager;
 
@@ -952,7 +956,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     accessibilityShortcutActivated();
                     break;
                 case MSG_BUGREPORT_TV:
-                    takeBugreport();
+                    requestFullBugreport();
                     break;
                 case MSG_ACCESSIBILITY_TV:
                     if (mAccessibilityShortcutController.isAccessibilityShortcutAvailable(false)) {
@@ -1159,6 +1163,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
         getAudioManagerInternal();
         mAudioManagerInternal.silenceRingerModeInternal("volume_hush");
+        Settings.Secure.putInt(mContext.getContentResolver(), Settings.Secure.HUSH_GESTURE_USED, 1);
+        mLogger.action(MetricsProto.MetricsEvent.ACTION_HUSH_GESTURE, mRingerToggleChord);
     }
 
     IStatusBarService getStatusBarService() {
@@ -2026,6 +2032,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         mHasFeatureLeanback = mContext.getPackageManager().hasSystemFeature(FEATURE_LEANBACK);
         mAccessibilityShortcutController =
                 new AccessibilityShortcutController(mContext, new Handler(), mCurrentUserId);
+        mLogger = new MetricsLogger();
         // Init display burn-in protection
         boolean burnInProtectionEnabled = context.getResources().getBoolean(
                 com.android.internal.R.bool.config_enableBurnInProtection);
@@ -2228,26 +2235,52 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     }
                     @Override
                     public void onFling(int duration) {
+                        String currentPackage = mContext.getPackageName();
                         if (mPowerManagerInternal != null) {
                             mPowerManagerInternal.powerHint(
                                     PowerHint.INTERACTION, duration);
                         }
+                        if (SCROLL_BOOST_SS_ENABLE) {
+                            if (mPerfBoostFling == null) {
+                                mPerfBoostFling = new BoostFramework();
+                                mIsPerfBoostFlingAcquired = false;
+                            }
+                            if (mPerfBoostFling == null) {
+                                Slog.e(TAG, "Error: boost object null");
+                                return;
+                            }
+
+                            mPerfBoostFling.perfHint(BoostFramework.VENDOR_HINT_SCROLL_BOOST,
+                                currentPackage, duration + 160, BoostFramework.Scroll.VERTICAL);
+                            mIsPerfBoostFlingAcquired = true;
+                        }
                     }
                     @Override
                     public void onScroll(boolean started) {
-                        if (mPerfBoost == null) {
-                            mPerfBoost = new BoostFramework();
+                        String currentPackage = mContext.getPackageName();
+                        if (mPerfBoostDrag == null) {
+                            mPerfBoostDrag = new BoostFramework();
                         }
-
-                        if (mPerfBoost == null) {
+                        if (mPerfBoostDrag == null) {
                             Slog.e(TAG, "Error: boost object null");
                             return;
                         }
+                        if (SCROLL_BOOST_SS_ENABLE) {
+                            if (mPerfBoostPrefling == null) {
+                                mPerfBoostPrefling = new BoostFramework();
+                            }
+                            if (mPerfBoostPrefling == null) {
+                                Slog.e(TAG, "Error: boost object null");
+                                return;
+                            }
+                            mPerfBoostPrefling.perfHint(BoostFramework.VENDOR_HINT_SCROLL_BOOST,
+                                    currentPackage, -1, BoostFramework.Scroll.PREFILING);
+                        }
                         if (started) {
-                            mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_DRAG_BOOST,
-                                                "", -1, 1);
+                            mPerfBoostDrag.perfHint(BoostFramework.VENDOR_HINT_DRAG_BOOST,
+                                            currentPackage, -1, 1);
                         } else {
-                            mPerfBoost.perfLockRelease();
+                            mPerfBoostDrag.perfLockRelease();
                         }
                     }
 
@@ -2258,6 +2291,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     @Override
                     public void onDown() {
                         mOrientationListener.onTouchStart();
+                        if(SCROLL_BOOST_SS_ENABLE && mPerfBoostFling!= null
+                                            && mIsPerfBoostFlingAcquired) {
+                            mPerfBoostFling.perfLockRelease();
+                            mIsPerfBoostFlingAcquired = false;
+                        }
                     }
                     @Override
                     public void onUpOrCancel() {
@@ -2332,6 +2370,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     @Override
                     public void onTrustedChanged() {
                         mWindowManagerFuncs.notifyKeyguardTrustedChanged();
+                    }
+
+                    @Override
+                    public void onShowingChanged() {
+                        mWindowManagerFuncs.onKeyguardShowingAndNotOccludedChanged();
                     }
                 });
         mScreenshotHelper = new ScreenshotHelper(mContext);
@@ -4150,13 +4193,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         return mAccessibilityTvScheduled;
     }
 
-    private void takeBugreport() {
+    private void requestFullBugreport() {
         if ("1".equals(SystemProperties.get("ro.debuggable"))
                 || Settings.Global.getInt(mContext.getContentResolver(),
                         Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1) {
             try {
                 ActivityManager.getService()
-                        .requestBugReport(ActivityManager.BUGREPORT_OPTION_INTERACTIVE);
+                        .requestBugReport(ActivityManager.BUGREPORT_OPTION_FULL);
             } catch (RemoteException e) {
                 Slog.e(TAG, "Error taking bugreport", e);
             }
@@ -5124,7 +5167,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         final int fl = PolicyControl.getWindowFlags(win, attrs);
         final int pfl = attrs.privateFlags;
         final int sim = attrs.softInputMode;
-        final int requestedSysUiFl = PolicyControl.getSystemUiVisibility(win, null);
+        final int requestedSysUiFl = PolicyControl.getSystemUiVisibility(null, attrs);
         final int sysUiFl = requestedSysUiFl | getImpliedSysUiFlagsForLayout(attrs);
 
         final Rect pf = mTmpParentFrame;
@@ -6135,14 +6178,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 && (!isNavBarVirtKey || mNavBarVirtualKeyHapticFeedbackEnabled)
                 && event.getRepeatCount() == 0;
 
-        // Cancel any pending remote recents animations before handling the button itself. In the
-        // case where we are going home and the recents animation has already started, just cancel
-        // the recents animation, leaving the home stack in place for the pending start activity
-        if (isNavBarVirtKey && !down && !canceled) {
-            boolean isHomeKey = keyCode == KeyEvent.KEYCODE_HOME;
-            mActivityManagerInternal.cancelRecentsAnimation(!isHomeKey);
-        }
-
         // Handle special keys.
         switch (keyCode) {
             case KeyEvent.KEYCODE_BACK: {
@@ -6206,7 +6241,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     sendSystemKeyToStatusBarAsync(event.getKeyCode());
 
                     TelecomManager telecomManager = getTelecommService();
-                    if (telecomManager != null) {
+                    if (telecomManager != null && !mHandleVolumeKeysInWM) {
+                        // When {@link #mHandleVolumeKeysInWM} is set, volume key events
+                        // should be dispatched to WM.
                         if (telecomManager.isRinging()) {
                             // If an incoming call is ringing, either VOLUME key means
                             // "silence ringer".  We handle these keys here, rather than
@@ -6700,6 +6737,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     void launchVoiceAssistWithWakeLock() {
+        sendCloseSystemWindows(SYSTEM_DIALOG_REASON_ASSIST);
+
         final Intent voiceIntent;
         if (!keyguardOn()) {
             voiceIntent = new Intent(RecognizerIntent.ACTION_WEB_SEARCH);
@@ -7253,14 +7292,35 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     }
 
     @Override
-    public boolean isDockSideAllowed(int dockSide) {
+    public boolean isDockSideAllowed(int dockSide, int originalDockSide, int displayWidth,
+            int displayHeight, int displayRotation) {
+        final int barPosition = navigationBarPosition(displayWidth, displayHeight, displayRotation);
+        return isDockSideAllowed(dockSide, originalDockSide, barPosition, mNavigationBarCanMove);
+    }
 
-        // We do not allow all dock sides at which the navigation bar touches the docked stack.
-        if (!mNavigationBarCanMove) {
-            return dockSide == DOCKED_TOP || dockSide == DOCKED_LEFT || dockSide == DOCKED_RIGHT;
-        } else {
-            return dockSide == DOCKED_TOP || dockSide == DOCKED_LEFT;
+    @VisibleForTesting
+    static boolean isDockSideAllowed(int dockSide, int originalDockSide,
+            int navBarPosition, boolean navigationBarCanMove) {
+        if (dockSide == DOCKED_TOP) {
+            return true;
         }
+
+        if (navigationBarCanMove) {
+            // Only allow the dockside opposite to the nav bar position in landscape
+            return dockSide == DOCKED_LEFT && navBarPosition == NAV_BAR_RIGHT
+                    || dockSide == DOCKED_RIGHT && navBarPosition == NAV_BAR_LEFT;
+        }
+
+        // Side is the same as original side
+        if (dockSide == originalDockSide) {
+            return true;
+        }
+
+        // Only if original docked side was top in portrait will allow left for landscape
+        if (dockSide == DOCKED_LEFT && originalDockSide == DOCKED_TOP) {
+            return true;
+        }
+        return false;
     }
 
     void sendCloseSystemWindows() {
@@ -8463,11 +8523,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
      */
     private int configureNavBarOpacity(int visibility, boolean dockedStackVisible,
             boolean freeformStackVisible, boolean isDockedDividerResizing) {
-        if (mScreenMagnificationActive) {
-            // When the screen is magnified, the nav bar should be opaque since its background
-            // can vary as the user pans and zooms
-            visibility = setNavBarOpaqueFlag(visibility);
-        } else if (mNavBarOpacityMode == NAV_BAR_OPAQUE_WHEN_FREEFORM_OR_DOCKED) {
+        if (mNavBarOpacityMode == NAV_BAR_OPAQUE_WHEN_FREEFORM_OR_DOCKED) {
             if (dockedStackVisible || freeformStackVisible || isDockedDividerResizing) {
                 visibility = setNavBarOpaqueFlag(visibility);
             }
@@ -8619,14 +8675,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             return true;
         }
         return false;
-    }
-
-    @Override
-    public void onScreenMagnificationStateChanged(boolean active) {
-        synchronized (mWindowManagerFuncs.getWindowManagerLock()) {
-            mScreenMagnificationActive = active;
-            updateSystemUiVisibilityLw();
-        }
     }
 
     @Override

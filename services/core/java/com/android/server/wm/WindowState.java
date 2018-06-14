@@ -409,7 +409,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
 
     final Rect mContainingFrame = new Rect();
 
-    private final Rect mParentFrame = new Rect();
+    final Rect mParentFrame = new Rect();
 
     /** Whether the parent frame would have been different if there was no display cutout. */
     private boolean mParentFrameWasClippedByDisplayCutout;
@@ -808,6 +808,8 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     void onParentSet() {
         super.onParentSet();
         setDrawnStateEvaluated(false /*evaluated*/);
+
+        getDisplayContent().reapplyMagnificationSpec();
     }
 
     @Override
@@ -929,6 +931,17 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
                     mContainingFrame.set(contentFrame);
                 }
             }
+
+            final TaskStack stack = getStack();
+            if (inPinnedWindowingMode() && stack != null
+                    && stack.lastAnimatingBoundsWasToFullscreen()) {
+                // PIP edge case: When going from pinned to fullscreen, we apply a
+                // tempInsetFrame for the full task - but we're still at the start of the animation.
+                // To prevent a jump if there's a letterbox, restrict to the parent frame.
+                mInsetFrame.intersectUnchecked(parentFrame);
+                mContainingFrame.intersectUnchecked(parentFrame);
+            }
+
             mDisplayFrame.set(mContainingFrame);
             layoutXDiff = !mInsetFrame.isEmpty() ? mInsetFrame.left - mContainingFrame.left : 0;
             layoutYDiff = !mInsetFrame.isEmpty() ? mInsetFrame.top - mContainingFrame.top : 0;
@@ -1750,7 +1763,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     @Override
     void onResize() {
         final ArrayList<WindowState> resizingWindows = mService.mResizingWindows;
-        if (mHasSurface && !resizingWindows.contains(this)) {
+        if (mHasSurface && !isGoneForLayoutLw() && !resizingWindows.contains(this)) {
             if (DEBUG_RESIZE) Slog.d(TAG, "onResize: Resizing " + this);
             resizingWindows.add(this);
         }
@@ -2285,8 +2298,8 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
                     if (DEBUG_FOCUS_LIGHT) Slog.i(TAG,
                             "setAnimationLocked: setting mFocusMayChange true");
                     mService.mFocusMayChange = true;
-                    setDisplayLayoutNeeded();
                 }
+                setDisplayLayoutNeeded();
                 // Window is no longer visible -- make sure if we were waiting
                 // for it to be displayed before enabling the display, that
                 // we allow the display to be enabled now.
@@ -2724,7 +2737,8 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     }
 
     boolean isClosing() {
-        return mAnimatingExit || (mService.mClosingApps.contains(mAppToken));
+        return mAnimatingExit || (mAppToken != null && mAppToken.isAnimating()
+                && mAppToken.hiddenRequested);
     }
 
     void addWinAnimatorToList(ArrayList<WindowStateAnimator> animators) {
@@ -3995,32 +4009,33 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         return false;
     }
 
+    private boolean applyImeWindowsIfNeeded(ToBooleanFunction<WindowState> callback,
+            boolean traverseTopToBottom) {
+        // If this window is the current IME target, so we need to process the IME windows
+        // directly above it. The exception is if we are in split screen
+        // in which case we process the IME at the DisplayContent level to
+        // ensure it is above the docked divider.
+        if (isInputMethodTarget() && !inSplitScreenWindowingMode()) {
+            if (getDisplayContent().forAllImeWindows(callback, traverseTopToBottom)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean applyInOrderWithImeWindows(ToBooleanFunction<WindowState> callback,
             boolean traverseTopToBottom) {
         if (traverseTopToBottom) {
-            if (isInputMethodTarget()) {
-                // This window is the current IME target, so we need to process the IME windows
-                // directly above it.
-                if (getDisplayContent().forAllImeWindows(callback, traverseTopToBottom)) {
-                    return true;
-                }
-            }
-            if (callback.apply(this)) {
+            if (applyImeWindowsIfNeeded(callback, traverseTopToBottom)
+                    || callback.apply(this)) {
                 return true;
             }
         } else {
-            if (callback.apply(this)) {
+            if (callback.apply(this)
+                    || applyImeWindowsIfNeeded(callback, traverseTopToBottom)) {
                 return true;
             }
-            if (isInputMethodTarget()) {
-                // This window is the current IME target, so we need to process the IME windows
-                // directly above it.
-                if (getDisplayContent().forAllImeWindows(callback, traverseTopToBottom)) {
-                    return true;
-                }
-            }
         }
-
         return false;
     }
 
@@ -4399,14 +4414,6 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         final boolean wasVisible = isVisibleLw();
 
         result |= (!wasVisible || !isDrawnLw()) ? RELAYOUT_RES_FIRST_TIME : 0;
-
-        if (mWinAnimator.mChildrenDetached) {
-            // If there are detached children hanging around we need to force
-            // the client receiving a new Surface.
-            mWinAnimator.preserveSurfaceLocked();
-            result |= RELAYOUT_RES_SURFACE_CHANGED
-                    | RELAYOUT_RES_FIRST_TIME;
-        }
 
         if (mAnimatingExit) {
             Slog.d(TAG, "relayoutVisibleWindow: " + this + " mAnimatingExit=true, mRemoveOnExit="

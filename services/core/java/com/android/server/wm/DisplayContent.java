@@ -390,8 +390,15 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
      */
     int mLayoutSeq = 0;
 
+    /**
+     * Specifies the count to determine whether to defer updating the IME target until ready.
+     */
+    private int mDeferUpdateImeTargetCount;
+
     /** Temporary float array to retrieve 3x3 matrix values. */
     private final float[] mTmpFloats = new float[9];
+
+    private MagnificationSpec mMagnificationSpec;
 
     private final Consumer<WindowState> mUpdateWindowsForAnimator = w -> {
         WindowStateAnimator winAnimator = w.mWinAnimator;
@@ -937,33 +944,50 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     /**
      * Update rotation of the display.
      *
-     * Returns true if the rotation has been changed.  In this case YOU MUST CALL
-     * {@link WindowManagerService#sendNewConfiguration(int)} TO UNFREEZE THE SCREEN.
+     * @return {@code true} if the rotation has been changed.  In this case YOU MUST CALL
+     *         {@link WindowManagerService#sendNewConfiguration(int)} TO UNFREEZE THE SCREEN.
      */
     boolean updateRotationUnchecked() {
-        if (mService.mDeferredRotationPauseCount > 0) {
-            // Rotation updates have been paused temporarily.  Defer the update until
-            // updates have been resumed.
-            if (DEBUG_ORIENTATION) Slog.v(TAG_WM, "Deferring rotation, rotation is paused.");
-            return false;
-        }
+        return updateRotationUnchecked(false /* forceUpdate */);
+    }
 
-        ScreenRotationAnimation screenRotationAnimation =
-                mService.mAnimator.getScreenRotationAnimationLocked(mDisplayId);
-        if (screenRotationAnimation != null && screenRotationAnimation.isAnimating()) {
-            // Rotation updates cannot be performed while the previous rotation change
-            // animation is still in progress.  Skip this update.  We will try updating
-            // again after the animation is finished and the display is unfrozen.
-            if (DEBUG_ORIENTATION) Slog.v(TAG_WM, "Deferring rotation, animation in progress.");
-            return false;
-        }
-        if (mService.mDisplayFrozen) {
-            // Even if the screen rotation animation has finished (e.g. isAnimating
-            // returns false), there is still some time where we haven't yet unfrozen
-            // the display. We also need to abort rotation here.
-            if (DEBUG_ORIENTATION) Slog.v(TAG_WM,
-                    "Deferring rotation, still finishing previous rotation");
-            return false;
+    /**
+     * Update rotation of the display with an option to force the update.
+     * @param forceUpdate Force the rotation update. Sometimes in WM we might skip updating
+     *                    orientation because we're waiting for some rotation to finish or display
+     *                    to unfreeze, which results in configuration of the previously visible
+     *                    activity being applied to a newly visible one. Forcing the rotation
+     *                    update allows to workaround this issue.
+     * @return {@code true} if the rotation has been changed.  In this case YOU MUST CALL
+     *         {@link WindowManagerService#sendNewConfiguration(int)} TO UNFREEZE THE SCREEN.
+     */
+    boolean updateRotationUnchecked(boolean forceUpdate) {
+        ScreenRotationAnimation screenRotationAnimation;
+        if (!forceUpdate) {
+            if (mService.mDeferredRotationPauseCount > 0) {
+                // Rotation updates have been paused temporarily.  Defer the update until
+                // updates have been resumed.
+                if (DEBUG_ORIENTATION) Slog.v(TAG_WM, "Deferring rotation, rotation is paused.");
+                return false;
+            }
+
+            screenRotationAnimation =
+                    mService.mAnimator.getScreenRotationAnimationLocked(mDisplayId);
+            if (screenRotationAnimation != null && screenRotationAnimation.isAnimating()) {
+                // Rotation updates cannot be performed while the previous rotation change
+                // animation is still in progress.  Skip this update.  We will try updating
+                // again after the animation is finished and the display is unfrozen.
+                if (DEBUG_ORIENTATION) Slog.v(TAG_WM, "Deferring rotation, animation in progress.");
+                return false;
+            }
+            if (mService.mDisplayFrozen) {
+                // Even if the screen rotation animation has finished (e.g. isAnimating
+                // returns false), there is still some time where we haven't yet unfrozen
+                // the display. We also need to abort rotation here.
+                if (DEBUG_ORIENTATION) Slog.v(TAG_WM,
+                        "Deferring rotation, still finishing previous rotation");
+                return false;
+            }
         }
 
         if (!mService.mDisplayEnabled) {
@@ -985,7 +1009,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         if (mayRotateSeamlessly) {
             final WindowState seamlessRotated = getWindow((w) -> w.mSeamlesslyRotated);
-            if (seamlessRotated != null) {
+            if (seamlessRotated != null && !forceUpdate) {
                 // We can't rotate (seamlessly or not) while waiting for the last seamless rotation
                 // to complete (that is, waiting for windows to redraw). It's tempting to check
                 // w.mSeamlessRotationCount but that could be incorrect in the case of
@@ -1508,6 +1532,10 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         return (stack != null && stack.isVisible()) ? stack : null;
     }
 
+    boolean hasSplitScreenPrimaryStack() {
+        return getSplitScreenPrimaryStack() != null;
+    }
+
     /**
      * Like {@link #getSplitScreenPrimaryStack}, but also returns the stack if it's currently
      * not visible.
@@ -1611,6 +1639,18 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         mService.mWindowsChanged = true;
     }
 
+    /**
+     * In split-screen mode we process the IME containers above the docked divider
+     * rather than directly above their target.
+     */
+    private boolean skipTraverseChild(WindowContainer child) {
+        if (child == mImeWindowsContainers && mService.mInputMethodTarget != null
+                && !hasSplitScreenPrimaryStack()) {
+            return true;
+        }
+        return false;
+    }
+
     @Override
     boolean forAllWindows(ToBooleanFunction<WindowState> callback, boolean traverseTopToBottom) {
         // Special handling so we can process IME windows with #forAllImeWindows above their IME
@@ -1618,11 +1658,10 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         if (traverseTopToBottom) {
             for (int i = mChildren.size() - 1; i >= 0; --i) {
                 final DisplayChildWindowContainer child = mChildren.get(i);
-                if (child == mImeWindowsContainers && mService.mInputMethodTarget != null) {
-                    // In this case the Ime windows will be processed above their target so we skip
-                    // here.
+                if (skipTraverseChild(child)) {
                     continue;
                 }
+
                 if (child.forAllWindows(callback, traverseTopToBottom)) {
                     return true;
                 }
@@ -1631,11 +1670,10 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             final int count = mChildren.size();
             for (int i = 0; i < count; i++) {
                 final DisplayChildWindowContainer child = mChildren.get(i);
-                if (child == mImeWindowsContainers && mService.mInputMethodTarget != null) {
-                    // In this case the Ime windows will be processed above their target so we skip
-                    // here.
+                if (skipTraverseChild(child)) {
                     continue;
                 }
+
                 if (child.forAllWindows(callback, traverseTopToBottom)) {
                     return true;
                 }
@@ -2438,6 +2476,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             return null;
         }
 
+        final WindowState curTarget = mService.mInputMethodTarget;
+        if (!canUpdateImeTarget()) {
+            if (DEBUG_INPUT_METHOD) Slog.w(TAG_WM, "Defer updating IME target");
+            return curTarget;
+        }
+
         // TODO(multidisplay): Needs some serious rethought when the target and IME are not on the
         // same display. Or even when the current IME/target are not on the same screen as the next
         // IME/target. For now only look for input windows on the main screen.
@@ -2461,16 +2505,13 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         if (DEBUG_INPUT_METHOD && updateImeTarget) Slog.v(TAG_WM,
                 "Proposed new IME target: " + target);
 
-        // Now, a special case -- if the last target's window is in the process of exiting, and is
-        // above the new target, keep on the last target to avoid flicker. Consider for example a
-        // Dialog with the IME shown: when the Dialog is dismissed, we want to keep the IME above it
-        // until it is completely gone so it doesn't drop behind the dialog or its full-screen
-        // scrim.
-        final WindowState curTarget = mService.mInputMethodTarget;
+        // Now, a special case -- if the last target's window is in the process of exiting, and the
+        // new target is home, keep on the last target to avoid flicker. Home is a special case
+        // since its above other stacks in the ordering list, but layed out below the others.
         if (curTarget != null && curTarget.isDisplayedLw() && curTarget.isClosing()
-                && (target == null
-                    || curTarget.mWinAnimator.mAnimLayer > target.mWinAnimator.mAnimLayer)) {
-            if (DEBUG_INPUT_METHOD) Slog.v(TAG_WM, "Current target higher, not changing");
+                && (target == null || target.isActivityTypeHome())) {
+            if (DEBUG_INPUT_METHOD) Slog.v(TAG_WM, "New target is home while current target is"
+                    + "closing, not changing");
             return curTarget;
         }
 
@@ -3837,8 +3878,20 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     }
 
     void applyMagnificationSpec(MagnificationSpec spec) {
+        if (spec.scale != 1.0) {
+            mMagnificationSpec = spec;
+        } else {
+            mMagnificationSpec = null;
+        }
+
         applyMagnificationSpec(getPendingTransaction(), spec);
         getPendingTransaction().apply();
+    }
+
+    void reapplyMagnificationSpec() {
+        if (mMagnificationSpec != null) {
+            applyMagnificationSpec(getPendingTransaction(), mMagnificationSpec);
+        }
     }
 
     @Override
@@ -3929,5 +3982,34 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     void assignStackOrdering() {
         mTaskStackContainers.assignStackOrdering(getPendingTransaction());
+    }
+
+    /**
+     * Increment the deferral count to determine whether to update the IME target.
+     */
+    void deferUpdateImeTarget() {
+        mDeferUpdateImeTargetCount++;
+    }
+
+    /**
+     * Decrement the deferral count to determine whether to update the IME target. If the count
+     * reaches 0, a new ime target will get computed.
+     */
+    void continueUpdateImeTarget() {
+        if (mDeferUpdateImeTargetCount == 0) {
+            return;
+        }
+
+        mDeferUpdateImeTargetCount--;
+        if (mDeferUpdateImeTargetCount == 0) {
+            computeImeTarget(true /* updateImeTarget */);
+        }
+    }
+
+    /**
+     * @return Whether a new IME target should be computed.
+     */
+    private boolean canUpdateImeTarget() {
+        return mDeferUpdateImeTargetCount == 0;
     }
 }

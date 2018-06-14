@@ -1015,26 +1015,25 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
             locationListener = mFusedLocationListener;
         }
 
-        if (!locationManager.isProviderEnabled(provider)) {
-            Log.w(TAG, "Unable to request location since " + provider
-                    + " provider does not exist or is not enabled.");
-            return;
-        }
-
         Log.i(TAG,
                 String.format(
                         "GNSS HAL Requesting location updates from %s provider for %d millis.",
                         provider, durationMillis));
-        locationManager.requestLocationUpdates(provider,
-                LOCATION_UPDATE_MIN_TIME_INTERVAL_MILLIS, /*minDistance=*/ 0,
-                locationListener, mHandler.getLooper());
-        locationListener.numLocationUpdateRequest++;
-        mHandler.postDelayed(() -> {
-            if (--locationListener.numLocationUpdateRequest == 0) {
-                Log.i(TAG, String.format("Removing location updates from %s provider.", provider));
-                locationManager.removeUpdates(locationListener);
-            }
-        }, durationMillis);
+        try {
+            locationManager.requestLocationUpdates(provider,
+                    LOCATION_UPDATE_MIN_TIME_INTERVAL_MILLIS, /*minDistance=*/ 0,
+                    locationListener, mHandler.getLooper());
+            locationListener.numLocationUpdateRequest++;
+            mHandler.postDelayed(() -> {
+                if (--locationListener.numLocationUpdateRequest == 0) {
+                    Log.i(TAG,
+                            String.format("Removing location updates from %s provider.", provider));
+                    locationManager.removeUpdates(locationListener);
+                }
+            }, durationMillis);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "Unable to request location.", e);
+        }
     }
 
     private void injectBestLocation(Location location) {
@@ -1887,9 +1886,26 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
                         GPS_CAPABILITY_MEASUREMENTS));
                 mGnssNavigationMessageProvider.onCapabilitiesUpdated(hasCapability(
                         GPS_CAPABILITY_NAV_MESSAGES));
+                restartRequests();
             }
         });
-   }
+    }
+
+    private void restartRequests() {
+        Log.i(TAG, "restartRequests");
+
+        restartLocationRequest();
+        mGnssMeasurementsProvider.resumeIfStarted();
+        mGnssNavigationMessageProvider.resumeIfStarted();
+        mGnssBatchingProvider.resumeIfStarted();
+        mGnssGeofenceProvider.resumeIfStarted();
+    }
+
+    private void restartLocationRequest() {
+        if (DEBUG) Log.d(TAG, "restartLocationRequest");
+        mStarted = false;
+        updateRequirements();
+    }
 
     /**
      * Called from native code to inform us the hardware year.
@@ -1907,6 +1923,23 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
         // mHardwareModelName is simply set here, to be read elsewhere, and volatile for safe sync
         if (DEBUG) Log.d(TAG, "setGnssModelName called with " + modelName);
         mHardwareModelName = modelName;
+    }
+
+    /**
+     * Called from native code to inform us GNSS HAL service died.
+     */
+    private void reportGnssServiceDied() {
+        if (DEBUG) Log.d(TAG, "reportGnssServiceDied");
+        mHandler.post(() -> {
+            class_init_native();
+            native_init_once();
+            if (isEnabled()) {
+                // re-calls native_init() and other setup.
+                handleEnable();
+                // resend configuration into the restarted HAL service.
+                reloadGpsProperties(mContext, mProperties);
+            }
+        });
     }
 
     public interface GnssSystemInfoProvider {

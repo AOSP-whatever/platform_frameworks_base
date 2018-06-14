@@ -77,7 +77,6 @@ public class NotificationActionListLayout extends LinearLayout {
         int otherViews = 0;
         int notGoneChildren = 0;
 
-        View lastNotGoneChild = null;
         for (int i = 0; i < N; i++) {
             View c = getChildAt(i);
             if (c instanceof TextView) {
@@ -87,7 +86,6 @@ public class NotificationActionListLayout extends LinearLayout {
             }
             if (c.getVisibility() != GONE) {
                 notGoneChildren++;
-                lastNotGoneChild = c;
             }
         }
 
@@ -107,11 +105,8 @@ public class NotificationActionListLayout extends LinearLayout {
                 }
             }
         }
-        boolean centerAligned = (mGravity & Gravity.CENTER_HORIZONTAL) != 0;
-        boolean singleChildCentered = notGoneChildren == 1 && centerAligned;
-        boolean needsRegularMeasurement = notGoneChildren > 1 || singleChildCentered;
 
-        if (needsRegularMeasurement && needRebuild) {
+        if (needRebuild) {
             rebuildMeasureOrder(textViews, otherViews);
         }
 
@@ -123,7 +118,7 @@ public class NotificationActionListLayout extends LinearLayout {
         int usedWidth = 0;
 
         int measuredChildren = 0;
-        for (int i = 0; i < N && needsRegularMeasurement; i++) {
+        for (int i = 0; i < N; i++) {
             // Measure shortest children first. To avoid measuring twice, we approximate by looking
             // at the text length.
             View c;
@@ -154,25 +149,6 @@ public class NotificationActionListLayout extends LinearLayout {
 
             usedWidth += c.getMeasuredWidth() + lp.rightMargin + lp.leftMargin;
             measuredChildren++;
-        }
-
-        // Make sure to measure the last child full-width if we didn't use up the entire width,
-        // or we didn't measure yet because there's just one child.
-        if (lastNotGoneChild != null && !centerAligned && (constrained && usedWidth < innerWidth
-                || notGoneChildren == 1)) {
-            MarginLayoutParams lp = (MarginLayoutParams) lastNotGoneChild.getLayoutParams();
-            if (notGoneChildren > 1) {
-                // Need to make room, since we already measured this once.
-                usedWidth -= lastNotGoneChild.getMeasuredWidth() + lp.rightMargin + lp.leftMargin;
-            }
-
-            int originalWidth = lp.width;
-            lp.width = LayoutParams.MATCH_PARENT;
-            measureChildWithMargins(lastNotGoneChild, widthMeasureSpec, usedWidth,
-                    heightMeasureSpec, 0 /* usedHeight */);
-            lp.width = originalWidth;
-
-            usedWidth += lastNotGoneChild.getMeasuredWidth() + lp.rightMargin + lp.leftMargin;
         }
 
         mTotalWidth = usedWidth + mPaddingRight + mPaddingLeft;
@@ -230,7 +206,17 @@ public class NotificationActionListLayout extends LinearLayout {
         final boolean centerAligned = (mGravity & Gravity.CENTER_HORIZONTAL) != 0;
 
         int childTop;
-        int childLeft = centerAligned ? left + (right - left) / 2 - mTotalWidth / 2 : 0;
+        int childLeft;
+        if (centerAligned) {
+            childLeft = mPaddingLeft + left + (right - left) / 2 - mTotalWidth / 2;
+        } else {
+            childLeft = mPaddingLeft;
+            int absoluteGravity = Gravity.getAbsoluteGravity(Gravity.START, getLayoutDirection());
+            if (absoluteGravity == Gravity.RIGHT) {
+                childLeft += right - left - mTotalWidth;
+            }
+        }
+
 
         // Where bottom of child should go
         final int height = bottom - top;
@@ -239,18 +225,6 @@ public class NotificationActionListLayout extends LinearLayout {
         int innerHeight = height - paddingTop - mPaddingBottom;
 
         final int count = getChildCount();
-
-        final int layoutDirection = getLayoutDirection();
-        switch (Gravity.getAbsoluteGravity(Gravity.START, layoutDirection)) {
-            case Gravity.RIGHT:
-                childLeft += mPaddingLeft + right - left - mTotalWidth;
-                break;
-
-            case Gravity.LEFT:
-            default:
-                childLeft += mPaddingLeft;
-                break;
-        }
 
         int start = 0;
         int dir = 1;

@@ -23,6 +23,7 @@ import android.app.IActivityManager;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.RemoteException;
@@ -75,21 +76,20 @@ public class KeyguardStatusView extends GridLayout implements
     private float mDarkAmount = 0;
     private int mTextColor;
     private float mWidgetPadding;
-    private boolean mAnimateLayout;
     private int mLastLayoutHeight;
 
     private KeyguardUpdateMonitorCallback mInfoCallback = new KeyguardUpdateMonitorCallback() {
 
         @Override
         public void onTimeChanged() {
-            refresh();
+            refreshTime();
         }
 
         @Override
         public void onKeyguardVisibilityChanged(boolean showing) {
             if (showing) {
                 if (DEBUG) Slog.v(TAG, "refresh statusview showing:" + showing);
-                refresh();
+                refreshTime();
                 updateOwnerInfo();
                 updateLogoutView();
             }
@@ -107,7 +107,7 @@ public class KeyguardStatusView extends GridLayout implements
 
         @Override
         public void onUserSwitchComplete(int userId) {
-            refresh();
+            refreshFormat();
             updateOwnerInfo();
             updateLogoutView();
         }
@@ -164,7 +164,9 @@ public class KeyguardStatusView extends GridLayout implements
     protected void onFinishInflate() {
         super.onFinishInflate();
         mLogoutView = findViewById(R.id.logout);
-        mLogoutView.setOnClickListener(this::onLogoutClicked);
+        if (mLogoutView != null) {
+            mLogoutView.setOnClickListener(this::onLogoutClicked);
+        }
 
         mClockView = findViewById(R.id.clock_view);
         mClockView.setShowCurrentUserTime(true);
@@ -177,14 +179,16 @@ public class KeyguardStatusView extends GridLayout implements
         mVisibleInDoze = Sets.newArraySet(mClockView, mKeyguardSlice);
         mTextColor = mClockView.getCurrentTextColor();
 
+        int clockStroke = getResources().getDimensionPixelSize(R.dimen.widget_small_font_stroke);
+        mClockView.getPaint().setStrokeWidth(clockStroke);
         mClockView.addOnLayoutChangeListener(this);
         mClockSeparator.addOnLayoutChangeListener(this);
         mKeyguardSlice.setContentChangeListener(this::onSliceContentChanged);
-        onSliceContentChanged(false /* animated */);
+        onSliceContentChanged();
 
         boolean shouldMarquee = KeyguardUpdateMonitor.getInstance(mContext).isDeviceInteractive();
         setEnableMarquee(shouldMarquee);
-        refresh();
+        refreshFormat();
         updateOwnerInfo();
         updateLogoutView();
         updateDark();
@@ -194,8 +198,7 @@ public class KeyguardStatusView extends GridLayout implements
         mClockView.setElegantTextHeight(false);
     }
 
-    private void onSliceContentChanged(boolean animated) {
-        mAnimateLayout = animated;
+    private void onSliceContentChanged() {
         boolean smallClock = mKeyguardSlice.hasHeader() || mPulsing;
         float clockScale = smallClock ? mSmallClockScale : 1;
 
@@ -223,9 +226,12 @@ public class KeyguardStatusView extends GridLayout implements
         long duration = KeyguardSliceView.DEFAULT_ANIM_DURATION;
         long delay = smallClock ? 0 : duration / 4;
 
+        boolean shouldAnimate = mKeyguardSlice.getLayoutTransition() != null
+                && mKeyguardSlice.getLayoutTransition().isRunning();
         if (view == mClockView) {
             float clockScale = smallClock ? mSmallClockScale : 1;
-            if (mAnimateLayout) {
+            Paint.Style style = smallClock ? Paint.Style.FILL_AND_STROKE : Paint.Style.FILL;
+            if (shouldAnimate) {
                 mClockView.setY(oldTop + heightOffset);
                 mClockView.animate().cancel();
                 mClockView.animate()
@@ -236,16 +242,22 @@ public class KeyguardStatusView extends GridLayout implements
                         .y(top)
                         .scaleX(clockScale)
                         .scaleY(clockScale)
+                        .withEndAction(() -> {
+                            mClockView.getPaint().setStyle(style);
+                            mClockView.invalidate();
+                        })
                         .start();
             } else {
                 mClockView.setY(top);
                 mClockView.setScaleX(clockScale);
                 mClockView.setScaleY(clockScale);
+                mClockView.getPaint().setStyle(style);
+                mClockView.invalidate();
             }
         } else if (view == mClockSeparator) {
             boolean hasSeparator = hasHeader && !mPulsing;
             float alpha = hasSeparator ? 1 : 0;
-            if (mAnimateLayout) {
+            if (shouldAnimate) {
                 boolean isAwake = mDarkAmount != 0;
                 mClockSeparator.setY(oldTop + heightOffset);
                 mClockSeparator.animate().cancel();
@@ -278,6 +290,8 @@ public class KeyguardStatusView extends GridLayout implements
         if (mClockView != null) {
             mClockView.setTextSize(TypedValue.COMPLEX_UNIT_PX,
                     getResources().getDimensionPixelSize(R.dimen.widget_big_font_size));
+            mClockView.getPaint().setStrokeWidth(
+                    getResources().getDimensionPixelSize(R.dimen.widget_small_font_stroke));
         }
         if (mOwnerInfo != null) {
             mOwnerInfo.setTextSize(TypedValue.COMPLEX_UNIT_PX,
@@ -285,16 +299,25 @@ public class KeyguardStatusView extends GridLayout implements
         }
     }
 
-    public void refreshTime() {
+    public void dozeTimeTick() {
+        refreshTime();
+        mKeyguardSlice.refresh();
+    }
+
+    private void refreshTime() {
         mClockView.refresh();
     }
 
-    private void refresh() {
+    private void refreshFormat() {
         Patterns.update(mContext);
-        refreshTime();
+        mClockView.setFormat12Hour(Patterns.clockView12);
+        mClockView.setFormat24Hour(Patterns.clockView24);
     }
 
     public int getLogoutButtonHeight() {
+        if (mLogoutView == null) {
+            return 0;
+        }
         return mLogoutView.getVisibility() == VISIBLE ? mLogoutView.getHeight() : 0;
     }
 
@@ -303,6 +326,9 @@ public class KeyguardStatusView extends GridLayout implements
     }
 
     private void updateLogoutView() {
+        if (mLogoutView == null) {
+            return;
+        }
         mLogoutView.setVisibility(shouldShowLogout() ? VISIBLE : GONE);
         // Logout button will stay in language of user 0 if we don't set that manually.
         mLogoutView.setText(mContext.getResources().getString(
@@ -335,6 +361,11 @@ public class KeyguardStatusView extends GridLayout implements
         super.onDetachedFromWindow();
         KeyguardUpdateMonitor.getInstance(mContext).removeCallback(mInfoCallback);
         Dependency.get(ConfigurationController.class).removeCallback(this);
+    }
+
+    @Override
+    public void onLocaleListChanged() {
+        refreshFormat();
     }
 
     @Override
@@ -384,7 +415,9 @@ public class KeyguardStatusView extends GridLayout implements
 
     private void updateDark() {
         boolean dark = mDarkAmount == 1;
-        mLogoutView.setAlpha(dark ? 0 : 1);
+        if (mLogoutView != null) {
+            mLogoutView.setAlpha(dark ? 0 : 1);
+        }
         if (mOwnerInfo != null) {
             boolean hasText = !TextUtils.isEmpty(mOwnerInfo.getText());
             mOwnerInfo.setVisibility(hasText && mDarkAmount != 1 ? VISIBLE : GONE);

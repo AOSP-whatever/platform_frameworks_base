@@ -165,7 +165,9 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
                 showNotificationIconArea(animate);
             }
         }
-        if ((diff1 & DISABLE_CLOCK) != 0) {
+        // The clock may have already been hidden, but we might want to shift its
+        // visibility to GONE from INVISIBLE or vice versa
+        if ((diff1 & DISABLE_CLOCK) != 0 || mClockView.getVisibility() != clockHiddenMode()) {
             if ((state1 & DISABLE_CLOCK) != 0) {
                 hideClock(animate);
             } else {
@@ -212,11 +214,22 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     }
 
     public void hideClock(boolean animate) {
-        animateHide(mClockView, animate);
+        animateHiddenState(mClockView, clockHiddenMode(), animate);
     }
 
     public void showClock(boolean animate) {
         animateShow(mClockView, animate);
+    }
+
+    /**
+     * If panel is expanded/expanding it usually means QS shade is opening, so
+     * don't set the clock GONE otherwise it'll mess up the animation.
+     */
+    private int clockHiddenMode() {
+        if (!mStatusBar.isClosed() && !mKeyguardMonitor.isShowing()) {
+            return View.INVISIBLE;
+        }
+        return View.GONE;
     }
 
     public void hideNotificationIconArea(boolean animate) {
@@ -240,21 +253,29 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     }
 
     /**
-     * Hides a view.
+     * Animate a view to INVISIBLE or GONE
      */
-    private void animateHide(final View v, boolean animate) {
+    private void animateHiddenState(final View v, int state, boolean animate) {
         v.animate().cancel();
         if (!animate) {
             v.setAlpha(0f);
-            v.setVisibility(View.INVISIBLE);
+            v.setVisibility(state);
             return;
         }
+
         v.animate()
                 .alpha(0f)
                 .setDuration(160)
                 .setStartDelay(0)
                 .setInterpolator(Interpolators.ALPHA_OUT)
-                .withEndAction(() -> v.setVisibility(View.INVISIBLE));
+                .withEndAction(() -> v.setVisibility(state));
+    }
+
+    /**
+     * Hides a view.
+     */
+    private void animateHide(final View v, boolean animate) {
+        animateHiddenState(v, View.INVISIBLE, animate);
     }
 
     /**

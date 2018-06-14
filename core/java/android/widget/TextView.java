@@ -2284,7 +2284,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
      * Sets the key listener to be used with this TextView.  This can be null
      * to disallow user input.  Note that this method has significant and
      * subtle interactions with soft keyboards and other input method:
-     * see {@link KeyListener#getInputType() KeyListener.getContentType()}
+     * see {@link KeyListener#getInputType() KeyListener.getInputType()}
      * for important details.  Calling this method will replace the current
      * content type of the text view with the content type returned by the
      * key listener.
@@ -11527,12 +11527,9 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
                 } else {
                     widgetType = TextClassifier.WIDGET_TYPE_UNSELECTABLE_TEXTVIEW;
                 }
-                // TODO: Tagged this widgetType with a * so it we can monitor if it reports
-                // SelectionEvents exactly as the older Logger does. Remove once investigations
-                // are complete.
                 final TextClassificationContext textClassificationContext =
                         new TextClassificationContext.Builder(
-                                mContext.getPackageName(), "*" + widgetType)
+                                mContext.getPackageName(), widgetType)
                                 .build();
                 if (mTextClassifier != null) {
                     mTextClassificationSession = tcm.createTextClassificationSession(

@@ -435,6 +435,28 @@ message WifiLog {
 
   // Wi-Fi RTT metrics
   optional WifiRttLog wifi_rtt_log = 110;
+
+  // Flag which indicates if Connected MAC Randomization is enabled
+  optional bool is_mac_randomization_on = 111 [default = false];
+
+  // Number of radio mode changes to MCC (Multi channel concurrency).
+  optional int32 num_radio_mode_change_to_mcc = 112;
+
+  // Number of radio mode changes to SCC (Single channel concurrency).
+  optional int32 num_radio_mode_change_to_scc = 113;
+
+  // Number of radio mode changes to SBS (Single band simultaneous).
+  optional int32 num_radio_mode_change_to_sbs = 114;
+
+  // Number of radio mode changes to DBS (Dual band simultaneous).
+  optional int32 num_radio_mode_change_to_dbs = 115;
+
+  // Number of times the firmware picked a SoftAp channel not satisfying user band preference.
+  optional int32 num_soft_ap_user_band_preference_unsatisfied = 116;
+
+  // Identifier for experimental scoring parameter settings.
+  optional string score_experiment_id = 117;
+
 }
 
 // Information that gets logged for every WiFi connection.
@@ -597,6 +619,9 @@ message RssiPollCount {
 
   // Number of RSSI polls with 'rssi'
   optional int32 count = 2;
+
+  // Beacon frequency of the channel in MHz
+  optional int32 frequency = 3;
 }
 
 // Number of occurrences of a specific alert reason value
@@ -748,6 +773,9 @@ message StaEvent {
     // The NetworkAgent score for wifi has changed in a way that may impact
     // connectivity
     TYPE_SCORE_BREACH = 16;
+
+    // Framework changed Sta interface MAC address
+    TYPE_MAC_CHANGE = 17;
   }
 
   enum FrameworkDisconnectReason {

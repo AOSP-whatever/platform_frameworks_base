@@ -84,6 +84,7 @@ StatsdConfig MakeValueMetricConfig(int64_t minTime) {
             CreateDimensions(android::util::TEMPERATURE, {2 /* sensor name field */});
     valueMetric->set_bucket(FIVE_MINUTES);
     valueMetric->set_min_bucket_size_nanos(minTime);
+    valueMetric->set_use_absolute_value_on_reset(true);
     return config;
 }
 
@@ -110,8 +111,8 @@ StatsdConfig MakeGaugeMetricConfig(int64_t minTime) {
 TEST(PartialBucketE2eTest, TestCountMetricWithoutSplit) {
     StatsService service(nullptr);
     SendConfig(service, MakeConfig());
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     service.mProcessor->OnLogEvent(CreateAppCrashEvent(100, start + 1).get());
     service.mProcessor->OnLogEvent(CreateAppCrashEvent(100, start + 2).get());
@@ -124,8 +125,8 @@ TEST(PartialBucketE2eTest, TestCountMetricWithoutSplit) {
 TEST(PartialBucketE2eTest, TestCountMetricNoSplitOnNewApp) {
     StatsService service(nullptr);
     SendConfig(service, MakeConfig());
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     // Force the uidmap to update at timestamp 2.
     service.mProcessor->OnLogEvent(CreateAppCrashEvent(100, start + 1).get());
@@ -142,8 +143,8 @@ TEST(PartialBucketE2eTest, TestCountMetricNoSplitOnNewApp) {
 TEST(PartialBucketE2eTest, TestCountMetricSplitOnUpgrade) {
     StatsService service(nullptr);
     SendConfig(service, MakeConfig());
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
     service.mUidMap->updateMap(start, {1}, {1}, {String16(kApp1.c_str())});
 
     // Force the uidmap to update at timestamp 2.
@@ -153,15 +154,20 @@ TEST(PartialBucketE2eTest, TestCountMetricSplitOnUpgrade) {
     service.mProcessor->OnLogEvent(CreateAppCrashEvent(100, start + 3).get());
 
     ConfigMetricsReport report = GetReports(service.mProcessor, start + 4);
+    backfillStartEndTimestamp(&report);
     EXPECT_EQ(1, report.metrics_size());
+    EXPECT_TRUE(report.metrics(0).count_metrics().data(0).bucket_info(0).
+                    has_start_bucket_elapsed_nanos());
+    EXPECT_TRUE(report.metrics(0).count_metrics().data(0).bucket_info(0).
+                    has_end_bucket_elapsed_nanos());
     EXPECT_EQ(1, report.metrics(0).count_metrics().data(0).bucket_info(0).count());
 }
 
 TEST(PartialBucketE2eTest, TestCountMetricSplitOnRemoval) {
     StatsService service(nullptr);
     SendConfig(service, MakeConfig());
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
     service.mUidMap->updateMap(start, {1}, {1}, {String16(kApp1.c_str())});
 
     // Force the uidmap to update at timestamp 2.
@@ -171,7 +177,12 @@ TEST(PartialBucketE2eTest, TestCountMetricSplitOnRemoval) {
     service.mProcessor->OnLogEvent(CreateAppCrashEvent(100, start + 3).get());
 
     ConfigMetricsReport report = GetReports(service.mProcessor, start + 4);
+    backfillStartEndTimestamp(&report);
     EXPECT_EQ(1, report.metrics_size());
+    EXPECT_TRUE(report.metrics(0).count_metrics().data(0).bucket_info(0).
+                    has_start_bucket_elapsed_nanos());
+    EXPECT_TRUE(report.metrics(0).count_metrics().data(0).bucket_info(0).
+                    has_end_bucket_elapsed_nanos());
     EXPECT_EQ(1, report.metrics(0).count_metrics().data(0).bucket_info(0).count());
 }
 
@@ -180,8 +191,8 @@ TEST(PartialBucketE2eTest, TestValueMetricWithoutMinPartialBucket) {
     // Partial buckets don't occur when app is first installed.
     service.mUidMap->updateApp(1, String16(kApp1.c_str()), 1, 1);
     SendConfig(service, MakeValueMetricConfig(0));
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     service.mProcessor->informPullAlarmFired(5 * 60 * NS_PER_SEC + start);
     service.mUidMap->updateApp(5 * 60 * NS_PER_SEC + start + 2, String16(kApp1.c_str()), 1, 2);
@@ -197,8 +208,8 @@ TEST(PartialBucketE2eTest, TestValueMetricWithMinPartialBucket) {
     // Partial buckets don't occur when app is first installed.
     service.mUidMap->updateApp(1, String16(kApp1.c_str()), 1, 1);
     SendConfig(service, MakeValueMetricConfig(60 * NS_PER_SEC /* One minute */));
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     const int64_t endSkipped = 5 * 60 * NS_PER_SEC + start + 2;
     service.mProcessor->informPullAlarmFired(5 * 60 * NS_PER_SEC + start);
@@ -206,10 +217,13 @@ TEST(PartialBucketE2eTest, TestValueMetricWithMinPartialBucket) {
 
     ConfigMetricsReport report =
             GetReports(service.mProcessor, 5 * 60 * NS_PER_SEC + start + 100 * NS_PER_SEC, true);
+    backfillStartEndTimestamp(&report);
     EXPECT_EQ(1, report.metrics_size());
     EXPECT_EQ(1, report.metrics(0).value_metrics().skipped_size());
+    EXPECT_TRUE(report.metrics(0).value_metrics().skipped(0).has_start_bucket_elapsed_nanos());
     // Can't test the start time since it will be based on the actual time when the pulling occurs.
-    EXPECT_EQ(endSkipped, report.metrics(0).value_metrics().skipped(0).end_elapsed_nanos());
+    EXPECT_EQ(MillisToNano(NanoToMillis(endSkipped)),
+              report.metrics(0).value_metrics().skipped(0).end_bucket_elapsed_nanos());
 }
 
 TEST(PartialBucketE2eTest, TestGaugeMetricWithoutMinPartialBucket) {
@@ -217,8 +231,8 @@ TEST(PartialBucketE2eTest, TestGaugeMetricWithoutMinPartialBucket) {
     // Partial buckets don't occur when app is first installed.
     service.mUidMap->updateApp(1, String16(kApp1.c_str()), 1, 1);
     SendConfig(service, MakeGaugeMetricConfig(0));
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     service.mProcessor->informPullAlarmFired(5 * 60 * NS_PER_SEC + start);
     service.mUidMap->updateApp(5 * 60 * NS_PER_SEC + start + 2, String16(kApp1.c_str()), 1, 2);
@@ -234,8 +248,8 @@ TEST(PartialBucketE2eTest, TestGaugeMetricWithMinPartialBucket) {
     // Partial buckets don't occur when app is first installed.
     service.mUidMap->updateApp(1, String16(kApp1.c_str()), 1, 1);
     SendConfig(service, MakeGaugeMetricConfig(60 * NS_PER_SEC /* One minute */));
-    const long start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
-                                                // initialized with.
+    int64_t start = getElapsedRealtimeNs();  // This is the start-time the metrics producers are
+                                             // initialized with.
 
     const int64_t endSkipped = 5 * 60 * NS_PER_SEC + start + 2;
     service.mProcessor->informPullAlarmFired(5 * 60 * NS_PER_SEC + start);
@@ -243,10 +257,13 @@ TEST(PartialBucketE2eTest, TestGaugeMetricWithMinPartialBucket) {
 
     ConfigMetricsReport report =
             GetReports(service.mProcessor, 5 * 60 * NS_PER_SEC + start + 100 * NS_PER_SEC, true);
+    backfillStartEndTimestamp(&report);
     EXPECT_EQ(1, report.metrics_size());
     EXPECT_EQ(1, report.metrics(0).gauge_metrics().skipped_size());
     // Can't test the start time since it will be based on the actual time when the pulling occurs.
-    EXPECT_EQ(endSkipped, report.metrics(0).gauge_metrics().skipped(0).end_elapsed_nanos());
+    EXPECT_TRUE(report.metrics(0).gauge_metrics().skipped(0).has_start_bucket_elapsed_nanos());
+    EXPECT_EQ(MillisToNano(NanoToMillis(endSkipped)),
+              report.metrics(0).gauge_metrics().skipped(0).end_bucket_elapsed_nanos());
 }
 
 #else

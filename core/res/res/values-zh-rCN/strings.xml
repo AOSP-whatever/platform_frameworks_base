@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"相机"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"拍摄照片和录制视频"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"允许&lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt;拍摄照片和录制视频吗？"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"通话记录"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"读取和写入手机通话记录"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"允许&lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt;访问您的手机通话记录吗？"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"电话"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"拨打电话和管理通话"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"允许&lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt;拨打电话和管理通话吗？"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"提示：点按两次可放大或缩小。"</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"自动填充"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"设置自动填充"</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"<xliff:g id="SERVICENAME">%1$s</xliff:g>的自动填充功能"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">"， "</string>
@@ -1779,8 +1781,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"所有语言"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"所有国家/地区"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"搜索"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"无法打开应用"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"<xliff:g id="APP_NAME_0">%1$s</xliff:g>应用目前无法使用。该应用是由<xliff:g id="APP_NAME_1">%2$s</xliff:g>所管理。"</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"应用无法使用"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"<xliff:g id="APP_NAME_0">%1$s</xliff:g>目前无法使用。该应用是由<xliff:g id="APP_NAME_1">%2$s</xliff:g>所管理。"</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"了解详情"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"要开启工作资料吗？"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"您的工作应用、通知、数据及其他工作资料功能将会开启"</string>
@@ -1877,5 +1879,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"点按即可查看屏蔽内容。"</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"系统"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"设置"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"相机"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"麦克风"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"显示在屏幕上其他应用的上层"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"正在加载"</string>
 </resources>

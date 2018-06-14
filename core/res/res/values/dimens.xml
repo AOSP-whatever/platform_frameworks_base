@@ -55,7 +55,7 @@
     <!-- Width of the navigation bar when it is placed vertically on the screen in car mode -->
     <dimen name="navigation_bar_width_car_mode">96dp</dimen>
     <!-- Height of notification icons in the status bar -->
-    <dimen name="status_bar_icon_size">24dip</dimen>
+    <dimen name="status_bar_icon_size">22dip</dimen>
     <!-- Size of the giant number (unread count) in the notifications -->
     <dimen name="status_bar_content_number_size">48sp</dimen>
     <!-- Margin at the edge of the screen to ignore touch events for in the windowshade. -->
@@ -247,7 +247,7 @@
     <dimen name="notification_header_shrink_min_width">72dp</dimen>
 
     <!-- The minimum height of the content if there are at least two lines or a picture-->
-    <dimen name="notification_min_content_height">41dp</dimen>
+    <dimen name="notification_min_content_height">39dp</dimen>
 
     <!-- The size of the media actions in the media notification. -->
     <dimen name="media_notification_action_button_size">48dp</dimen>
@@ -374,6 +374,10 @@
     <dimen name="notification_title_text_size">14sp</dimen>
     <!-- Size of smaller notification text (see TextAppearance.StatusBar.EventContent.Line2, Info, Time) -->
     <dimen name="notification_subtext_size">12sp</dimen>
+    <!-- Size of notification text (see TextAppearance.StatusBar.EventContent) -->
+    <dimen name="notification_ambient_text_size">16sp</dimen>
+    <!-- Size of notification text titles (see TextAppearance.StatusBar.EventContent.Title) -->
+    <dimen name="notification_ambient_title_text_size">24sp</dimen>
 
     <!-- Top padding for notifications in the standard layout. -->
     <dimen name="notification_top_pad">10dp</dimen>
@@ -632,7 +636,7 @@
     <!-- The maximum width of a image in a media notification. The images will be reduced to that width in case they are bigger.-->
     <dimen name="notification_media_image_max_width_low_ram">100dp</dimen>
     <!-- The size of the right icon image when on low ram -->
-    <dimen name="notification_right_icon_size_low_ram">38dp</dimen>
+    <dimen name="notification_right_icon_size_low_ram">@dimen/notification_right_icon_size</dimen>
 
     <dimen name="messaging_avatar_size">@dimen/notification_right_icon_size</dimen>
 

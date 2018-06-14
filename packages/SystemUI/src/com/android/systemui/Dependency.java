@@ -151,7 +151,6 @@ public class Dependency extends SystemUI {
 
     @Override
     public void start() {
-        sDependency = this;
         // TODO: Think about ways to push these creation rules out of Dependency to cut down
         // on imports.
         mProviders.put(TIME_TICK_HANDLER, () -> {
@@ -247,10 +246,14 @@ public class Dependency extends SystemUI {
                 getDependency(LeakDetector.class),
                 getDependency(LEAK_REPORT_EMAIL)));
 
-        mProviders.put(GarbageMonitor.class, () -> new GarbageMonitor(
-                getDependency(BG_LOOPER),
-                getDependency(LeakDetector.class),
-                getDependency(LeakReporter.class)));
+        mProviders.put(
+                GarbageMonitor.class,
+                () ->
+                        new GarbageMonitor(
+                                mContext,
+                                getDependency(BG_LOOPER),
+                                getDependency(LeakDetector.class),
+                                getDependency(LeakReporter.class)));
 
         mProviders.put(TunerService.class, () ->
                 new TunerServiceImpl(mContext));
@@ -327,6 +330,8 @@ public class Dependency extends SystemUI {
 
         // Put all dependencies above here so the factory can override them if it wants.
         SystemUIFactory.getInstance().injectDependencies(mProviders, mContext);
+
+        sDependency = this;
     }
 
     @Override

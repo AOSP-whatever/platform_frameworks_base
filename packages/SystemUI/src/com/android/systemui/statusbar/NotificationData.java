@@ -16,6 +16,11 @@
 
 package com.android.systemui.statusbar;
 
+import static android.app.Notification.CATEGORY_ALARM;
+import static android.app.Notification.CATEGORY_CALL;
+import static android.app.Notification.CATEGORY_EVENT;
+import static android.app.Notification.CATEGORY_MESSAGE;
+import static android.app.Notification.CATEGORY_REMINDER;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_AMBIENT;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_FULL_SCREEN_INTENT;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_NOTIFICATION_LIST;
@@ -27,10 +32,13 @@ import android.app.AppGlobals;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.Person;
 import android.content.Context;
 import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Icon;
+import android.os.Bundle;
+import android.os.Parcelable;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.service.notification.NotificationListenerService.Ranking;
@@ -45,6 +53,7 @@ import android.widget.RemoteViews;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.statusbar.StatusBarIcon;
+import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.NotificationColorUtil;
 import com.android.systemui.Dependency;
 import com.android.systemui.ForegroundServiceController;
@@ -52,6 +61,7 @@ import com.android.systemui.statusbar.notification.InflationException;
 import com.android.systemui.statusbar.phone.NotificationGroupManager;
 import com.android.systemui.statusbar.phone.StatusBar;
 import com.android.systemui.statusbar.policy.HeadsUpManager;
+import com.android.systemui.statusbar.policy.ZenModeController;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -68,6 +78,7 @@ public class NotificationData {
     private final Environment mEnvironment;
     private HeadsUpManager mHeadsUpManager;
 
+    final ZenModeController mZen = Dependency.get(ZenModeController.class);
     final ForegroundServiceController mFsc = Dependency.get(ForegroundServiceController.class);
 
     public static final class Entry {
@@ -109,6 +120,11 @@ public class NotificationData {
          * retrieve the info.
          */
         public Boolean mIsSystemNotification;
+
+        /**
+         * Has the user sent a reply through this Notification.
+         */
+        private boolean hasSentReply;
 
         public Entry(StatusBarNotification n) {
             this.key = n.getKey();
@@ -290,6 +306,40 @@ public class NotificationData {
         public void onRemoteInputInserted() {
             lastRemoteInputSent = NOT_LAUNCHED_YET;
             remoteInputTextWhenReset = null;
+        }
+
+        public void setHasSentReply() {
+            hasSentReply = true;
+        }
+
+        public boolean isLastMessageFromReply() {
+            if (!hasSentReply) {
+                return false;
+            }
+            Bundle extras = notification.getNotification().extras;
+            CharSequence[] replyTexts = extras.getCharSequenceArray(
+                    Notification.EXTRA_REMOTE_INPUT_HISTORY);
+            if (!ArrayUtils.isEmpty(replyTexts)) {
+                return true;
+            }
+            Parcelable[] messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+            if (messages != null && messages.length > 0) {
+                Parcelable message = messages[messages.length - 1];
+                if (message instanceof Bundle) {
+                    Notification.MessagingStyle.Message lastMessage =
+                            Notification.MessagingStyle.Message.getMessageFromBundle(
+                                    (Bundle) message);
+                    if (lastMessage != null) {
+                        Person senderPerson = lastMessage.getSenderPerson();
+                        if (senderPerson == null) {
+                            return true;
+                        }
+                        Person user = extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON);
+                        return Objects.equals(user, senderPerson);
+                    }
+                }
+            }
+            return false;
         }
     }
 
@@ -474,6 +524,10 @@ public class NotificationData {
     }
 
     protected boolean isExemptFromDndVisualSuppression(Entry entry) {
+        if (isNotificationBlockedByPolicy(entry.notification.getNotification())) {
+            return false;
+        }
+
         if ((entry.notification.getNotification().flags
                 & Notification.FLAG_FOREGROUND_SERVICE) != 0) {
             return true;
@@ -485,6 +539,26 @@ public class NotificationData {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Categories that are explicitly called out on DND settings screens are always blocked, if
+     * DND has flagged them, even if they are foreground or system notifications that might
+     * otherwise visually bypass DND.
+     */
+    protected boolean isNotificationBlockedByPolicy(Notification n) {
+        if (isCategory(CATEGORY_CALL, n)
+                || isCategory(CATEGORY_MESSAGE, n)
+                || isCategory(CATEGORY_ALARM, n)
+                || isCategory(CATEGORY_EVENT, n)
+                || isCategory(CATEGORY_REMINDER, n)) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isCategory(String category, Notification n) {
+        return Objects.equals(n.category, category);
     }
 
     public int getImportance(String key) {

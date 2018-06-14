@@ -87,8 +87,6 @@ final class AccessibilityController {
 
     private WindowsForAccessibilityObserver mWindowsForAccessibilityObserver;
 
-    private boolean mScreenMagnificationActive;
-
     public void setMagnificationCallbacksLocked(MagnificationCallbacks callbacks) {
         if (callbacks != null) {
             if (mDisplayMagnifier != null) {
@@ -137,11 +135,6 @@ final class AccessibilityController {
         }
         if (mWindowsForAccessibilityObserver != null) {
             mWindowsForAccessibilityObserver.scheduleComputeChangedWindowsLocked();
-        }
-        boolean nowActive = !spec.isNop();
-        if (nowActive != mScreenMagnificationActive) {
-            mScreenMagnificationActive = nowActive;
-            mService.mPolicy.onScreenMagnificationStateChanged(nowActive);
         }
     }
 
@@ -681,6 +674,7 @@ final class AccessibilityController {
                 mTempLayer = 0;
                 dc.forAllWindows((w) -> {
                     if (w.isOnScreen() && w.isVisibleLw()
+                            && (w.mAttrs.alpha != 0)
                             && !w.mWinAnimator.mEnterAnimationPending) {
                         mTempLayer++;
                         outWindows.put(mTempLayer, w);

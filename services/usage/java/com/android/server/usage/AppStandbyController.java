@@ -24,6 +24,8 @@ import static android.app.usage.UsageStatsManager.REASON_MAIN_TIMEOUT;
 import static android.app.usage.UsageStatsManager.REASON_MAIN_USAGE;
 import static android.app.usage.UsageStatsManager.REASON_SUB_PREDICTED_RESTORED;
 import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_ACTIVE_TIMEOUT;
+import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_EXEMPTED_SYNC_SCHEDULED_DOZE;
+import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_EXEMPTED_SYNC_SCHEDULED_NON_DOZE;
 import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_EXEMPTED_SYNC_START;
 import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_MOVE_TO_BACKGROUND;
 import static android.app.usage.UsageStatsManager.REASON_SUB_USAGE_MOVE_TO_FOREGROUND;
@@ -113,6 +115,9 @@ import java.util.concurrent.CountDownLatch;
 
 /**
  * Manages the standby state of an app, listening to various events.
+ *
+ * Unit test:
+   atest ${ANDROID_BUILD_TOP}/frameworks/base/services/tests/servicestests/src/com/android/server/usage/AppStandbyControllerTests.java
  */
 public class AppStandbyController {
 
@@ -191,7 +196,9 @@ public class AppStandbyController {
     static final int MSG_ONE_TIME_CHECK_IDLE_STATES = 10;
     /** Check the state of one app: arg1 = userId, arg2 = uid, obj = (String) packageName */
     static final int MSG_CHECK_PACKAGE_IDLE_STATE = 11;
-    static final int MSG_REPORT_EXEMPTED_SYNC_START = 12;
+    static final int MSG_REPORT_EXEMPTED_SYNC_SCHEDULED = 12;
+    static final int MSG_REPORT_EXEMPTED_SYNC_START = 13;
+    static final int MSG_UPDATE_STABLE_CHARGING= 14;
 
     long mCheckIdleIntervalMillis;
     long mAppIdleParoleIntervalMillis;
@@ -209,14 +216,29 @@ public class AppStandbyController {
     long mPredictionTimeoutMillis;
     /** Maximum time a sync adapter associated with a CP should keep the buckets elevated. */
     long mSyncAdapterTimeoutMillis;
-    /** Maximum time an exempted sync should keep the buckets elevated. */
-    long mExemptedSyncAdapterTimeoutMillis;
+    /**
+     * Maximum time an exempted sync should keep the buckets elevated, when sync is scheduled in
+     * non-doze
+     */
+    long mExemptedSyncScheduledNonDozeTimeoutMillis;
+    /**
+     * Maximum time an exempted sync should keep the buckets elevated, when sync is scheduled in
+     * doze
+     */
+    long mExemptedSyncScheduledDozeTimeoutMillis;
+    /**
+     * Maximum time an exempted sync should keep the buckets elevated, when sync is started.
+     */
+    long mExemptedSyncStartTimeoutMillis;
     /** Maximum time a system interaction should keep the buckets elevated. */
     long mSystemInteractionTimeoutMillis;
+    /** The length of time phone must be charging before considered stable enough to run jobs  */
+    long mStableChargingThresholdMillis;
 
     volatile boolean mAppIdleEnabled;
     boolean mAppIdleTempParoled;
     boolean mCharging;
+    boolean mChargingStable;
     private long mLastAppIdleParoledTime;
     private boolean mSystemServicesReady = false;
     // There was a system update, defaults need to be initialized after services are ready
@@ -297,7 +319,7 @@ public class AppStandbyController {
         mPackageManager = mContext.getPackageManager();
         mDeviceStateReceiver = new DeviceStateReceiver();
 
-        IntentFilter deviceStates = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        IntentFilter deviceStates = new IntentFilter(BatteryManager.ACTION_CHARGING);
         deviceStates.addAction(BatteryManager.ACTION_DISCHARGING);
         deviceStates.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
         mContext.registerReceiver(mDeviceStateReceiver, deviceStates);
@@ -386,6 +408,37 @@ public class AppStandbyController {
         }
     }
 
+    void reportExemptedSyncScheduled(String packageName, int userId) {
+        if (!mAppIdleEnabled) return;
+
+        final int bucketToPromote;
+        final int usageReason;
+        final long durationMillis;
+
+        if (!mInjector.isDeviceIdleMode()) {
+            // Not dozing.
+            bucketToPromote = STANDBY_BUCKET_ACTIVE;
+            usageReason = REASON_SUB_USAGE_EXEMPTED_SYNC_SCHEDULED_NON_DOZE;
+            durationMillis = mExemptedSyncScheduledNonDozeTimeoutMillis;
+        } else {
+            // Dozing.
+            bucketToPromote = STANDBY_BUCKET_WORKING_SET;
+            usageReason = REASON_SUB_USAGE_EXEMPTED_SYNC_SCHEDULED_DOZE;
+            durationMillis = mExemptedSyncScheduledDozeTimeoutMillis;
+        }
+
+        final long elapsedRealtime = mInjector.elapsedRealtime();
+
+        synchronized (mAppIdleLock) {
+            AppUsageHistory appUsage = mAppIdleHistory.reportUsage(packageName, userId,
+                    bucketToPromote, usageReason,
+                    0,
+                    elapsedRealtime + durationMillis);
+            maybeInformListeners(packageName, userId, elapsedRealtime,
+                    appUsage.currentBucket, appUsage.bucketingReason, false);
+        }
+    }
+
     void reportExemptedSyncStart(String packageName, int userId) {
         if (!mAppIdleEnabled) return;
 
@@ -395,7 +448,7 @@ public class AppStandbyController {
             AppUsageHistory appUsage = mAppIdleHistory.reportUsage(packageName, userId,
                     STANDBY_BUCKET_ACTIVE, REASON_SUB_USAGE_EXEMPTED_SYNC_START,
                     0,
-                    elapsedRealtime + mExemptedSyncAdapterTimeoutMillis);
+                    elapsedRealtime + mExemptedSyncStartTimeoutMillis);
             maybeInformListeners(packageName, userId, elapsedRealtime,
                     appUsage.currentBucket, appUsage.bucketingReason, false);
         }
@@ -405,6 +458,27 @@ public class AppStandbyController {
         synchronized (mAppIdleLock) {
             if (mCharging != charging) {
                 mCharging = charging;
+                if (DEBUG) Slog.d(TAG, "Setting mCharging to " + charging);
+                if (charging) {
+                    if (DEBUG) {
+                        Slog.d(TAG, "Scheduling MSG_UPDATE_STABLE_CHARGING  delay = "
+                                + mStableChargingThresholdMillis);
+                    }
+                    mHandler.sendEmptyMessageDelayed(MSG_UPDATE_STABLE_CHARGING,
+                            mStableChargingThresholdMillis);
+                } else {
+                    mHandler.removeMessages(MSG_UPDATE_STABLE_CHARGING);
+                    updateChargingStableState();
+                }
+            }
+        }
+    }
+
+    void updateChargingStableState() {
+        synchronized (mAppIdleLock) {
+            if (mChargingStable != mCharging) {
+                if (DEBUG) Slog.d(TAG, "Setting mChargingStable to " + mCharging);
+                mChargingStable = mCharging;
                 postParoleStateChanged();
             }
         }
@@ -431,7 +505,8 @@ public class AppStandbyController {
     boolean isParoledOrCharging() {
         if (!mAppIdleEnabled) return true;
         synchronized (mAppIdleLock) {
-            return mAppIdleTempParoled || mCharging;
+            // Only consider stable charging when determining charge state.
+            return mAppIdleTempParoled || mChargingStable;
         }
     }
 
@@ -1080,6 +1155,11 @@ public class AppStandbyController {
 
     void setAppStandbyBucket(String packageName, int userId, @StandbyBuckets int newBucket,
             int reason, long elapsedRealtime) {
+        setAppStandbyBucket(packageName, userId, newBucket, reason, elapsedRealtime, false);
+    }
+
+    void setAppStandbyBucket(String packageName, int userId, @StandbyBuckets int newBucket,
+            int reason, long elapsedRealtime, boolean resetTimeout) {
         synchronized (mAppIdleLock) {
             AppIdleHistory.AppUsageHistory app = mAppIdleHistory.getAppUsageHistory(packageName,
                     userId, elapsedRealtime);
@@ -1129,7 +1209,7 @@ public class AppStandbyController {
             }
 
             mAppIdleHistory.setAppStandbyBucket(packageName, userId, elapsedRealtime, newBucket,
-                    reason);
+                    reason, resetTimeout);
         }
         maybeInformListeners(packageName, userId, elapsedRealtime, newBucket, reason, false);
     }
@@ -1331,6 +1411,11 @@ public class AppStandbyController {
                 .sendToTarget();
     }
 
+    void postReportExemptedSyncScheduled(String packageName, int userId) {
+        mHandler.obtainMessage(MSG_REPORT_EXEMPTED_SYNC_SCHEDULED, userId, 0, packageName)
+                .sendToTarget();
+    }
+
     void postReportExemptedSyncStart(String packageName, int userId) {
         mHandler.obtainMessage(MSG_REPORT_EXEMPTED_SYNC_START, userId, 0, packageName)
                 .sendToTarget();
@@ -1367,15 +1452,29 @@ public class AppStandbyController {
         TimeUtils.formatDuration(mAppIdleParoleDurationMillis, pw);
         pw.println();
 
+        pw.print("  mExemptedSyncScheduledNonDozeTimeoutMillis=");
+        TimeUtils.formatDuration(mExemptedSyncScheduledNonDozeTimeoutMillis, pw);
+        pw.println();
+        pw.print("  mExemptedSyncScheduledDozeTimeoutMillis=");
+        TimeUtils.formatDuration(mExemptedSyncScheduledDozeTimeoutMillis, pw);
+        pw.println();
+        pw.print("  mExemptedSyncStartTimeoutMillis=");
+        TimeUtils.formatDuration(mExemptedSyncStartTimeoutMillis, pw);
+        pw.println();
+
         pw.println();
         pw.print("mAppIdleEnabled="); pw.print(mAppIdleEnabled);
         pw.print(" mAppIdleTempParoled="); pw.print(mAppIdleTempParoled);
         pw.print(" mCharging="); pw.print(mCharging);
+        pw.print(" mChargingStable="); pw.print(mChargingStable);
         pw.print(" mLastAppIdleParoledTime=");
         TimeUtils.formatDuration(mLastAppIdleParoledTime, pw);
         pw.println();
         pw.print("mScreenThresholds="); pw.println(Arrays.toString(mAppStandbyScreenThresholds));
         pw.print("mElapsedThresholds="); pw.println(Arrays.toString(mAppStandbyElapsedThresholds));
+        pw.print("mStableChargingThresholdMillis=");
+        TimeUtils.formatDuration(mStableChargingThresholdMillis, pw);
+        pw.println();
     }
 
     /**
@@ -1391,6 +1490,7 @@ public class AppStandbyController {
         private IBatteryStats mBatteryStats;
         private PackageManagerInternal mPackageManagerInternal;
         private DisplayManager mDisplayManager;
+        private PowerManager mPowerManager;
         int mBootPhase;
 
         Injector(Context context, Looper looper) {
@@ -1415,6 +1515,7 @@ public class AppStandbyController {
                 mPackageManagerInternal = LocalServices.getService(PackageManagerInternal.class);
                 mDisplayManager = (DisplayManager) mContext.getSystemService(
                         Context.DISPLAY_SERVICE);
+                mPowerManager = mContext.getSystemService(PowerManager.class);
             }
             mBootPhase = phase;
         }
@@ -1494,6 +1595,11 @@ public class AppStandbyController {
             return Global.getString(mContext.getContentResolver(),
                     Global.APP_IDLE_CONSTANTS);
         }
+
+        /** Whether the device is in doze or not. */
+        public boolean isDeviceIdleMode() {
+            return mPowerManager.isDeviceIdleMode();
+        }
     }
 
     class AppStandbyHandler extends Handler {
@@ -1549,7 +1655,7 @@ public class AppStandbyController {
 
                 case MSG_PAROLE_STATE_CHANGED:
                     if (DEBUG) Slog.d(TAG, "Parole state: " + mAppIdleTempParoled
-                            + ", Charging state:" + mCharging);
+                            + ", Charging state:" + mChargingStable);
                     informParoleStateChanged();
                     break;
                 case MSG_CHECK_PACKAGE_IDLE_STATE:
@@ -1557,8 +1663,16 @@ public class AppStandbyController {
                             mInjector.elapsedRealtime());
                     break;
 
+                case MSG_REPORT_EXEMPTED_SYNC_SCHEDULED:
+                    reportExemptedSyncScheduled((String) msg.obj, msg.arg1);
+                    break;
+
                 case MSG_REPORT_EXEMPTED_SYNC_START:
                     reportExemptedSyncStart((String) msg.obj, msg.arg1);
+                    break;
+
+                case MSG_UPDATE_STABLE_CHARGING:
+                    updateChargingStableState();
                     break;
 
                 default:
@@ -1572,11 +1686,16 @@ public class AppStandbyController {
     private class DeviceStateReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (Intent.ACTION_BATTERY_CHANGED.equals(action)) {
-                setChargingState(intent.getIntExtra("plugged", 0) != 0);
-            } else if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED.equals(action)) {
-                onDeviceIdleModeChanged();
+            switch (intent.getAction()) {
+                case BatteryManager.ACTION_CHARGING:
+                    setChargingState(true);
+                    break;
+                case BatteryManager.ACTION_DISCHARGING:
+                    setChargingState(false);
+                    break;
+                case PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED:
+                    onDeviceIdleModeChanged();
+                    break;
             }
         }
     }
@@ -1620,9 +1739,11 @@ public class AppStandbyController {
          */
         @Deprecated
         private static final String KEY_IDLE_DURATION_OLD = "idle_duration";
-
+        @Deprecated
         private static final String KEY_IDLE_DURATION = "idle_duration2";
+        @Deprecated
         private static final String KEY_WALLCLOCK_THRESHOLD = "wallclock_threshold";
+
         private static final String KEY_PAROLE_INTERVAL = "parole_interval";
         private static final String KEY_PAROLE_WINDOW = "parole_window";
         private static final String KEY_PAROLE_DURATION = "parole_duration";
@@ -1635,15 +1756,24 @@ public class AppStandbyController {
                 "system_update_usage_duration";
         private static final String KEY_PREDICTION_TIMEOUT = "prediction_timeout";
         private static final String KEY_SYNC_ADAPTER_HOLD_DURATION = "sync_adapter_duration";
-        private static final String KEY_EXEMPTED_SYNC_HOLD_DURATION = "exempted_sync_duration";
+        private static final String KEY_EXEMPTED_SYNC_SCHEDULED_NON_DOZE_HOLD_DURATION
+                = "exempted_sync_scheduled_nd_duration";
+        private static final String KEY_EXEMPTED_SYNC_SCHEDULED_DOZE_HOLD_DURATION
+                = "exempted_sync_scheduled_d_duration";
+        private static final String KEY_EXEMPTED_SYNC_START_HOLD_DURATION
+                = "exempted_sync_start_duration";
         private static final String KEY_SYSTEM_INTERACTION_HOLD_DURATION =
                 "system_interaction_duration";
+        private static final String KEY_STABLE_CHARGING_THRESHOLD = "stable_charging_threshold";
         public static final long DEFAULT_STRONG_USAGE_TIMEOUT = 1 * ONE_HOUR;
         public static final long DEFAULT_NOTIFICATION_TIMEOUT = 12 * ONE_HOUR;
         public static final long DEFAULT_SYSTEM_UPDATE_TIMEOUT = 2 * ONE_HOUR;
         public static final long DEFAULT_SYSTEM_INTERACTION_TIMEOUT = 10 * ONE_MINUTE;
         public static final long DEFAULT_SYNC_ADAPTER_TIMEOUT = 10 * ONE_MINUTE;
-        public static final long DEFAULT_EXEMPTED_SYNC_TIMEOUT = 10 * ONE_MINUTE;
+        public static final long DEFAULT_EXEMPTED_SYNC_SCHEDULED_NON_DOZE_TIMEOUT = 10 * ONE_MINUTE;
+        public static final long DEFAULT_EXEMPTED_SYNC_SCHEDULED_DOZE_TIMEOUT = 4 * ONE_HOUR;
+        public static final long DEFAULT_EXEMPTED_SYNC_START_TIMEOUT = 10 * ONE_MINUTE;
+        public static final long DEFAULT_STABLE_CHARGING_THRESHOLD = 10 * ONE_MINUTE;
 
         private final KeyValueListParser mParser = new KeyValueListParser(',');
 
@@ -1727,12 +1857,28 @@ public class AppStandbyController {
                 mSyncAdapterTimeoutMillis = mParser.getDurationMillis
                         (KEY_SYNC_ADAPTER_HOLD_DURATION,
                                 COMPRESS_TIME ? ONE_MINUTE : DEFAULT_SYNC_ADAPTER_TIMEOUT);
-                mExemptedSyncAdapterTimeoutMillis = mParser.getDurationMillis
-                        (KEY_EXEMPTED_SYNC_HOLD_DURATION,
-                                COMPRESS_TIME ? ONE_MINUTE : DEFAULT_EXEMPTED_SYNC_TIMEOUT);
+
+                mExemptedSyncScheduledNonDozeTimeoutMillis = mParser.getDurationMillis
+                        (KEY_EXEMPTED_SYNC_SCHEDULED_NON_DOZE_HOLD_DURATION,
+                                COMPRESS_TIME ? (ONE_MINUTE / 2)
+                                        : DEFAULT_EXEMPTED_SYNC_SCHEDULED_NON_DOZE_TIMEOUT);
+
+                mExemptedSyncScheduledDozeTimeoutMillis = mParser.getDurationMillis
+                        (KEY_EXEMPTED_SYNC_SCHEDULED_DOZE_HOLD_DURATION,
+                                COMPRESS_TIME ? ONE_MINUTE
+                                        : DEFAULT_EXEMPTED_SYNC_SCHEDULED_DOZE_TIMEOUT);
+
+                mExemptedSyncStartTimeoutMillis = mParser.getDurationMillis
+                        (KEY_EXEMPTED_SYNC_START_HOLD_DURATION,
+                                COMPRESS_TIME ? ONE_MINUTE
+                                        : DEFAULT_EXEMPTED_SYNC_START_TIMEOUT);
+
                 mSystemInteractionTimeoutMillis = mParser.getDurationMillis
                         (KEY_SYSTEM_INTERACTION_HOLD_DURATION,
                                 COMPRESS_TIME ? ONE_MINUTE : DEFAULT_SYSTEM_INTERACTION_TIMEOUT);
+                mStableChargingThresholdMillis = mParser.getDurationMillis
+                        (KEY_STABLE_CHARGING_THRESHOLD,
+                                COMPRESS_TIME ? ONE_MINUTE : DEFAULT_STABLE_CHARGING_THRESHOLD);
             }
         }
 

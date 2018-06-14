@@ -48,6 +48,7 @@ import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IPowerManager;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.UserHandle;
@@ -173,10 +174,8 @@ public class StatusBarTest extends SysuiTestCase {
         mNotificationLogger = new NotificationLogger();
 
         IPowerManager powerManagerService = mock(IPowerManager.class);
-        HandlerThread handlerThread = new HandlerThread("TestThread");
-        handlerThread.start();
         mPowerManager = new PowerManager(mContext, powerManagerService,
-                new Handler(handlerThread.getLooper()));
+                Handler.createAsync(Looper.myLooper()));
 
         CommandQueue commandQueue = mock(CommandQueue.class);
         when(commandQueue.asBinder()).thenReturn(new Binder());
@@ -440,6 +439,30 @@ public class StatusBarTest extends SysuiTestCase {
         NotificationData.Entry entry = new NotificationData.Entry(sbn);
 
         assertTrue(mEntryManager.shouldPeek(entry, sbn));
+    }
+
+    @Test
+    public void testPeek_disabledStatusBar() {
+        Notification n = new Notification.Builder(getContext(), "a").build();
+        StatusBarNotification sbn = new StatusBarNotification("a", "a", 0, "a", 0, 0, n,
+                UserHandle.of(0), null, 0);
+        NotificationData.Entry entry = new NotificationData.Entry(sbn);
+        mStatusBar.disable(StatusBarManager.DISABLE_EXPAND, 0, false /* animate */);
+
+        assertFalse("The panel shouldn't allow peek while disabled",
+                mStatusBar.shouldPeek(entry, sbn));
+    }
+
+    @Test
+    public void testPeek_disabledNotificationShade() {
+        Notification n = new Notification.Builder(getContext(), "a").build();
+        StatusBarNotification sbn = new StatusBarNotification("a", "a", 0, "a", 0, 0, n,
+                UserHandle.of(0), null, 0);
+        NotificationData.Entry entry = new NotificationData.Entry(sbn);
+        mStatusBar.disable(0, StatusBarManager.DISABLE2_NOTIFICATION_SHADE, false /* animate */);
+
+        assertFalse("The panel shouldn't allow peek while notitifcation shade disabled",
+                mStatusBar.shouldPeek(entry, sbn));
     }
 
     @Test

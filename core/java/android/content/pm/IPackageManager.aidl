@@ -598,6 +598,8 @@ interface IPackageManager {
     boolean setApplicationHiddenSettingAsUser(String packageName, boolean hidden, int userId);
     boolean getApplicationHiddenSettingAsUser(String packageName, int userId);
 
+    boolean setSystemAppInstallState(String packageName, boolean installed, int userId);
+
     IPackageInstaller getPackageInstaller();
 
     boolean setBlockUninstallForUser(String packageName, boolean blockUninstall, int userId);
@@ -643,8 +645,6 @@ interface IPackageManager {
     ChangedPackages getChangedPackages(int sequenceNumber, int userId);
 
     boolean isPackageDeviceAdminOnAnyUser(String packageName);
-
-    List<String> getPreviousCodePaths(in String packageName);
 
     int getInstallReason(String packageName, int userId);
 

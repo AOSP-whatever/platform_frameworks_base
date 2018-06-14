@@ -4084,7 +4084,8 @@ public class BatteryStatsImpl extends BatteryStats {
 
     boolean ensureStartClockTime(final long currentTime) {
         final long ABOUT_ONE_YEAR = 365*24*60*60*1000L;
-        if (currentTime > ABOUT_ONE_YEAR && mStartClockTime < (currentTime-ABOUT_ONE_YEAR)) {
+        if ((currentTime > ABOUT_ONE_YEAR && mStartClockTime < (currentTime-ABOUT_ONE_YEAR))
+                || (mStartClockTime > currentTime)) {
             // If the start clock time has changed by more than a year, then presumably
             // the previous time was completely bogus.  So we are going to figure out a
             // new time based on how much time has elapsed since we started counting.
@@ -5071,7 +5072,8 @@ public class BatteryStatsImpl extends BatteryStats {
                     + Integer.toHexString(mHistoryCur.states));
             addHistoryRecordLocked(elapsedRealtime, uptime);
             mMobileRadioPowerState = powerState;
-            StatsLog.write(StatsLog.MOBILE_RADIO_POWER_STATE_CHANGED, uid, powerState);
+            StatsLog.write_non_chained(StatsLog.MOBILE_RADIO_POWER_STATE_CHANGED, uid, null,
+                    powerState);
             if (active) {
                 mMobileRadioActiveTimer.startRunningLocked(elapsedRealtime);
                 mMobileRadioActivePerAppTimer.startRunningLocked(elapsedRealtime);
@@ -5824,7 +5826,8 @@ public class BatteryStatsImpl extends BatteryStats {
                     + Integer.toHexString(mHistoryCur.states));
             addHistoryRecordLocked(elapsedRealtime, uptime);
             mWifiRadioPowerState = powerState;
-            StatsLog.write(StatsLog.WIFI_RADIO_POWER_STATE_CHANGED, uid, powerState);
+            StatsLog.write_non_chained(StatsLog.WIFI_RADIO_POWER_STATE_CHANGED, uid, null,
+                    powerState);
         }
     }
 

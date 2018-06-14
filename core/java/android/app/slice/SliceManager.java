@@ -23,6 +23,7 @@ import android.annotation.Nullable;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.annotation.SystemService;
+import android.annotation.WorkerThread;
 import android.content.ContentProviderClient;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -217,6 +218,7 @@ public class SliceManager {
      * @return All slices within the space.
      * @see SliceProvider#onGetSliceDescendants(Uri)
      */
+    @WorkerThread
     public @NonNull Collection<Uri> getSliceDescendants(@NonNull Uri uri) {
         ContentResolver resolver = mContext.getContentResolver();
         try (ContentProviderClient provider = resolver.acquireContentProviderClient(uri)) {
@@ -243,7 +245,8 @@ public class SliceManager {
         ContentResolver resolver = mContext.getContentResolver();
         try (ContentProviderClient provider = resolver.acquireContentProviderClient(uri)) {
             if (provider == null) {
-                throw new IllegalArgumentException("Unknown URI " + uri);
+                Log.w(TAG, String.format("Unknown URI: %s", uri));
+                return null;
             }
             Bundle extras = new Bundle();
             extras.putParcelable(SliceProvider.EXTRA_BIND_URI, uri);
@@ -304,7 +307,8 @@ public class SliceManager {
                 .authority(authority).build();
         try (ContentProviderClient provider = resolver.acquireContentProviderClient(uri)) {
             if (provider == null) {
-                throw new IllegalArgumentException("Unknown URI " + uri);
+                Log.w(TAG, String.format("Unknown URI: %s", uri));
+                return null;
             }
             Bundle extras = new Bundle();
             extras.putParcelable(SliceProvider.EXTRA_INTENT, intent);
@@ -381,7 +385,8 @@ public class SliceManager {
                 .authority(authority).build();
         try (ContentProviderClient provider = resolver.acquireContentProviderClient(uri)) {
             if (provider == null) {
-                throw new IllegalArgumentException("Unknown URI " + uri);
+                Log.w(TAG, String.format("Unknown URI: %s", uri));
+                return null;
             }
             Bundle extras = new Bundle();
             extras.putParcelable(SliceProvider.EXTRA_INTENT, intent);

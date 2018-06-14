@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"กล้องถ่ายรูป"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"ถ่ายภาพและบันทึกวิดีโอ"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"อนุญาตให้ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; ถ่ายรูปและบันทึกวิดีโอไหม"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"ประวัติการโทร"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"อ่านและเขียนประวัติการโทรของโทรศัพท์"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"อนุญาตให้ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; เข้าถึงประวัติการโทรในโทรศัพท์ไหม"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"โทรศัพท์"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"โทรและจัดการการโทร"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"อนุญาตให้ &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; โทรและจัดการการโทรไหม"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"เคล็ดลับ: แตะสองครั้งเพื่อขยายและย่อ"</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"ป้อนอัตโนมัติ"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"ค่าป้อนอัตโนมัติ"</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"ป้อนข้อความอัตโนมัติโดยใช้ <xliff:g id="SERVICENAME">%1$s</xliff:g>"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">", "</string>
@@ -1779,8 +1781,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"ทุกภาษา"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"ภูมิภาคทั้งหมด"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"ค้นหา"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"เปิดแอปไม่ได้"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"เปิดแอป <xliff:g id="APP_NAME_0">%1$s</xliff:g> ไม่ได้ในขณะนี้ นโยบายนี้จัดการโดย <xliff:g id="APP_NAME_1">%2$s</xliff:g>"</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"แอปไม่พร้อมใช้งาน"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"เปิด <xliff:g id="APP_NAME_0">%1$s</xliff:g> ไม่ได้ในขณะนี้ แอปนี้จัดการโดย <xliff:g id="APP_NAME_1">%2$s</xliff:g>"</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"ดูข้อมูลเพิ่มเติม"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"เปิดโปรไฟล์งานไหม"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"ระบบจะเปิดแอปงาน การแจ้งเตือน ข้อมูล และฟีเจอร์อื่นๆ ในโปรไฟล์งาน"</string>
@@ -1877,5 +1879,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"แตะเพื่อดูรายการที่ถูกบล็อก"</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"ระบบ"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"การตั้งค่า"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"กล้อง"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"ไมโครโฟน"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"แสดงทับแอปอื่นๆ บนหน้าจอ"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"กำลังโหลด"</string>
 </resources>

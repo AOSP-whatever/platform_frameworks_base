@@ -291,6 +291,9 @@
     <string name="permgrouplab_camera" msgid="4820372495894586615">"Camera"</string>
     <string name="permgroupdesc_camera" msgid="3250611594678347720">"kumuha ng mga larawan at mag-record ng video"</string>
     <string name="permgrouprequest_camera" msgid="1299833592069671756">"Payagan ang &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; na kumuha ng mga larawan at mag-record ng video?"</string>
+    <string name="permgrouplab_calllog" msgid="8798646184930388160">"Mga log ng tawag"</string>
+    <string name="permgroupdesc_calllog" msgid="3006237336748283775">"binabasa at sinusulat ang log ng tawag sa telepono"</string>
+    <string name="permgrouprequest_calllog" msgid="8487355309583773267">"Payagan ang &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; na i-access ang iyong mga log ng tawag sa telepono?"</string>
     <string name="permgrouplab_phone" msgid="5229115638567440675">"Telepono"</string>
     <string name="permgroupdesc_phone" msgid="6234224354060641055">"tumawag at mamahala ng mga tawag sa telepono"</string>
     <string name="permgrouprequest_phone" msgid="9166979577750581037">"Payagan ang &lt;b&gt;<xliff:g id="APP_NAME">%1$s</xliff:g>&lt;/b&gt; na tumawag at mamahala ng mga tawag sa telepono?"</string>
@@ -836,8 +839,7 @@
     <string name="double_tap_toast" msgid="4595046515400268881">"Tip: Mag-double tap upang mag-zoom in at out."</string>
     <string name="autofill_this_form" msgid="4616758841157816676">"Autofill"</string>
     <string name="setup_autofill" msgid="7103495070180590814">"I-set up ang Autofill."</string>
-    <!-- no translation found for autofill_window_title (4107745526909284887) -->
-    <skip />
+    <string name="autofill_window_title" msgid="4107745526909284887">"Mag-autofill gamit ang <xliff:g id="SERVICENAME">%1$s</xliff:g>"</string>
     <string name="autofill_address_name_separator" msgid="6350145154779706772">" "</string>
     <string name="autofill_address_summary_name_format" msgid="3268041054899214945">"$1$2$3"</string>
     <string name="autofill_address_summary_separator" msgid="7483307893170324129">", "</string>
@@ -1779,8 +1781,8 @@
     <string name="language_picker_section_all" msgid="3097279199511617537">"Lahat ng wika"</string>
     <string name="region_picker_section_all" msgid="8966316787153001779">"Lahat ng rehiyon"</string>
     <string name="locale_search_menu" msgid="2560710726687249178">"Maghanap"</string>
-    <string name="app_suspended_title" msgid="1919029799438164552">"Hindi mabuksan ang app"</string>
-    <string name="app_suspended_default_message" msgid="7875306315686531621">"Hindi available ang app na <xliff:g id="APP_NAME_0">%1$s</xliff:g> sa ngayon. Pinamamahalaan ito ng <xliff:g id="APP_NAME_1">%2$s</xliff:g>."</string>
+    <string name="app_suspended_title" msgid="2075071241147969611">"Hindi available ang app"</string>
+    <string name="app_suspended_default_message" msgid="123166680425711887">"Hindi available ang <xliff:g id="APP_NAME_0">%1$s</xliff:g> sa ngayon. Pinamamahalaan ito ng <xliff:g id="APP_NAME_1">%2$s</xliff:g>."</string>
     <string name="app_suspended_more_details" msgid="1131804827776778187">"Matuto pa"</string>
     <string name="work_mode_off_title" msgid="1118691887588435530">"I-on ang profile sa trabaho?"</string>
     <string name="work_mode_off_message" msgid="5130856710614337649">"Mao-on ang iyong mga app sa trabaho, notification, data, at iba pang feature sa profile sa trabaho"</string>
@@ -1877,5 +1879,8 @@
     <string name="zen_upgrade_notification_content" msgid="1794994264692424562">"I-tap para tingnan kung ano ang naka-block."</string>
     <string name="notification_app_name_system" msgid="4205032194610042794">"System"</string>
     <string name="notification_app_name_settings" msgid="7751445616365753381">"Mga Setting"</string>
+    <string name="notification_appops_camera_active" msgid="5050283058419699771">"Camera"</string>
+    <string name="notification_appops_microphone_active" msgid="4335305527588191730">"Mikropono"</string>
+    <string name="notification_appops_overlay_active" msgid="633813008357934729">"ipinapakita sa ibabaw ng ibang app sa iyong screen"</string>
     <string name="car_loading_profile" msgid="3545132581795684027">"Naglo-load"</string>
 </resources>
