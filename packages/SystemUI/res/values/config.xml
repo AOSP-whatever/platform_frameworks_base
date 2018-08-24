@@ -510,4 +510,8 @@
 
     <!-- On debuggable builds, alert the user if SystemUI PSS goes over this number (in kb) -->
     <integer name="watch_heap_limit">256000</integer>
+
+    <!-- Max visible notification icons -->
+    <integer name="config_maxVisibleNotificationIcons">4</integer>
+    <integer name="config_maxVisibleNotificationIconsWhenDark">5</integer>
 </resources>
