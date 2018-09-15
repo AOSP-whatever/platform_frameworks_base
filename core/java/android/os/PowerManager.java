@@ -418,6 +418,20 @@ public final class PowerManager {
     public static final String REBOOT_RECOVERY_UPDATE = "recovery-update";
 
     /**
+     * The value to pass as the 'reason' argument to reboot() to
+     * reboot into bootloader mode
+     * @hide
+     */
+    public static final String REBOOT_BOOTLOADER = "bootloader";
+
+    /**
+     * The value to pass as the 'reason' argument to reboot() to
+     * reboot into download mode
+     * @hide
+     */
+    public static final String REBOOT_DOWNLOAD = "download";
+
+    /**
      * The value to pass as the 'reason' argument to reboot() when device owner requests a reboot on
      * the device.
      * @hide
@@ -558,6 +572,37 @@ public final class PowerManager {
     public int getDefaultScreenBrightnessForVrSetting() {
         return mContext.getResources().getInteger(
                 com.android.internal.R.integer.config_screenBrightnessForVrSettingDefault);
+    }
+
+    /**
+     * Gets the minimum supported button brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the minimum value that can be set by the user.
+     * @hide
+     */
+    public int getMinimumButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingMinimum);
+    }
+
+    /**
+     * Gets the maximum supported button brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the maximum value that can be set by the user.
+     * @hide
+     */
+    public int getMaximumButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingMaximum);
+    }
+
+    /**
+     * Gets the default button brightness setting.
+     * @hide
+     */
+    public int getDefaultButtonBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_buttonBrightnessSettingDefault);
     }
 
     /**
@@ -987,6 +1032,24 @@ public final class PowerManager {
     public void rebootSafeMode() {
         try {
             mService.rebootSafeMode(false, true);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Reboot the device.  Will not return if the reboot is successful.
+     * <p>
+     * Requires the {@link android.Manifest.permission#REBOOT} permission.
+     * </p>
+     *
+     * @param reason code to pass to the kernel (e.g., "recovery", "bootloader", "download") to
+     *               request special boot modes, or null.
+     * @hide
+     */
+    public void rebootCustom(String reason) {
+        try {
+            mService.rebootCustom(false, reason, true);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

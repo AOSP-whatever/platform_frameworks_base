@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 The Android Open Source Project
+ * Copyright (C) 2017 The LineageOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +36,8 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 import android.widget.RemoteViews;
+
+import com.android.internal.util.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -92,6 +95,9 @@ public class TileUtils {
 
     private static final String MANUFACTURER_DEFAULT_CATEGORY =
             "com.android.settings.category.device";
+
+    private static final String LINEAGE_SETTINGS_ACTION =
+            "org.lineageos.lineageparts.action.SETTINGS";
 
     /**
      * The key used to get the category from metadata of activities of action
@@ -184,6 +190,16 @@ public class TileUtils {
 
     public static final String SETTING_PKG = "com.android.settings";
 
+    public static final String LINEAGE_SETTING_PKG = "org.lineageos.lineageparts";
+
+    public static final String DEVICE_SETTING_PKG = "org.lineageos.settings.device";
+
+    public static final String[] SETTINGS_CATEGORY_PACKAGES = new String[] {
+        SETTING_PKG,
+        LINEAGE_SETTING_PKG,
+        DEVICE_SETTING_PKG
+    };
+
     /**
      * Build a list of DashboardCategory. Each category must be defined in manifest.
      * eg: .Settings$DeviceSettings
@@ -226,6 +242,10 @@ public class TileUtils {
                 // Only add Settings for this user.
                 getTilesForAction(context, user, SETTINGS_ACTION, cache, null, tiles, true,
                         settingPkg);
+                if (SETTING_PKG.equals(settingPkg)) {
+                    getTilesForAction(context, user, LINEAGE_SETTINGS_ACTION, cache, null, tiles,
+                        true, LINEAGE_SETTING_PKG);
+                }
                 getTilesForAction(context, user, OPERATOR_SETTINGS, cache,
                         OPERATOR_DEFAULT_CATEGORY, tiles, false, true, settingPkg);
                 getTilesForAction(context, user, MANUFACTURER_SETTINGS, cache,
@@ -236,7 +256,7 @@ public class TileUtils {
                         settingPkg);
                 if (!categoryDefinedInManifest) {
                     getTilesForAction(context, user, IA_SETTINGS_ACTION, cache, null, tiles, false,
-                            settingPkg);
+                            true, settingPkg);
                     if (extraAction != null) {
                         getTilesForAction(context, user, extraAction, cache, null, tiles, false,
                                 settingPkg);
@@ -294,7 +314,7 @@ public class TileUtils {
                 continue;
             }
             category.title = resolved.activityInfo.loadLabel(pm);
-            category.priority = SETTING_PKG.equals(
+            category.priority = ArrayUtils.contains(SETTINGS_CATEGORY_PACKAGES,
                     resolved.activityInfo.applicationInfo.packageName) ? resolved.priority : 0;
             if (DEBUG) Log.d(LOG_TAG, "Adding category " + category.title);
         }

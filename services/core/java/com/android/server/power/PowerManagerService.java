@@ -68,6 +68,7 @@ import android.util.EventLog;
 import android.util.KeyValueListParser;
 import android.util.Log;
 import android.util.PrintWriterPrinter;
+import android.util.Log;
 import android.util.Slog;
 import android.util.SparseArray;
 import android.util.TimeUtils;
@@ -212,6 +213,9 @@ public final class PowerManagerService extends SystemService
     /** If turning screen on takes more than this long, we show a warning on logcat. */
     private static final int SCREEN_ON_LATENCY_WARNING_MS = 200;
 
+    // Default value for buttons lights timeout
+    private static final int BUTTON_ON_DURATION = 2500;
+
     /** Constants for {@link #shutdownOrRebootInternal} */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef({HALT_MODE_SHUTDOWN, HALT_MODE_REBOOT, HALT_MODE_REBOOT_SAFE_MODE})
@@ -240,6 +244,9 @@ public final class PowerManagerService extends SystemService
     private SettingsObserver mSettingsObserver;
     private DreamManagerInternal mDreamManager;
     private Light mAttentionLight;
+    private Light mButtonsLight;
+
+    private int mEvent;
 
     private final Object mLock = LockGuard.installNewLock(LockGuard.INDEX_POWER);
 
@@ -287,6 +294,7 @@ public final class PowerManagerService extends SystemService
     private long mLastSleepTime;
 
     // Timestamp of the last call to user activity.
+    private long mLastButtonActivityTime;
     private long mLastUserActivityTime;
     private long mLastUserActivityTimeNoChangeLights;
 
@@ -473,10 +481,26 @@ public final class PowerManagerService extends SystemService
     // One of the Settings.System.SCREEN_BRIGHTNESS_MODE_* constants.
     private int mScreenBrightnessModeSetting;
 
+    // Button brightness setting limits.
+    private int mButtonBrightnessSettingMinimum;
+    private int mButtonBrightnessSettingMaximum;
+    private int mButtonBrightnessSettingDefault;
+
+    // Override brightness value when off.
+    private boolean mButtonBrightnessEnabled;
+
+    // Buttons brightness setting, from 0 t 255.
+    private int mButtonBrightnessSetting;
+
     // The screen brightness setting override from the window manager
     // to allow the current foreground activity to override the brightness.
     // Use -1 to disable.
     private int mScreenBrightnessOverrideFromWindowManager = -1;
+
+    // The button brightness setting override from the window manager
+    // to allow the current foreground activity to override the button brightness.
+    // Use -1 to disable.
+    private int mButtonBrightnessOverrideFromWindowManager = -1;
 
     // The window manager has determined the user to be inactive via other means.
     // Set this to false to disable.
@@ -733,6 +757,9 @@ public final class PowerManagerService extends SystemService
             mScreenBrightnessSettingMaximum = pm.getMaximumScreenBrightnessSetting();
             mScreenBrightnessSettingDefault = pm.getDefaultScreenBrightnessSetting();
             mScreenBrightnessForVrSettingDefault = pm.getDefaultScreenBrightnessForVrSetting();
+            mButtonBrightnessSettingMinimum = pm.getMinimumButtonBrightnessSetting();
+            mButtonBrightnessSettingMaximum = pm.getMaximumButtonBrightnessSetting();
+            mButtonBrightnessSettingDefault = pm.getDefaultButtonBrightnessSetting();
 
             SensorManager sensorManager = new SystemSensorManager(mContext, mHandler.getLooper());
 
@@ -750,6 +777,7 @@ public final class PowerManagerService extends SystemService
 
             mLightsManager = getLocalService(LightsManager.class);
             mAttentionLight = mLightsManager.getLight(LightsManager.LIGHT_ID_ATTENTION);
+            mButtonsLight = mLightsManager.getLight(LightsManager.LIGHT_ID_BUTTONS);
 
             // Initialize display power management.
             mDisplayManagerInternal.initPowerManagement(
@@ -815,6 +843,12 @@ public final class PowerManagerService extends SystemService
         resolver.registerContentObserver(Settings.Global.getUriFor(
                 Settings.Global.DEVICE_DEMO_MODE),
                 false, mSettingsObserver, UserHandle.USER_SYSTEM);
+        resolver.registerContentObserver(Settings.System.getUriFor(
+                Settings.System.BUTTON_BRIGHTNESS),
+                false, mSettingsObserver, UserHandle.USER_ALL);
+        resolver.registerContentObserver(Settings.System.getUriFor(
+                Settings.System.BUTTON_BRIGHTNESS_ENABLED),
+                false, mSettingsObserver, UserHandle.USER_ALL);
         IVrManager vrManager = (IVrManager) getBinderService(Context.VR_SERVICE);
         if (vrManager != null) {
             try {
@@ -963,6 +997,19 @@ public final class PowerManagerService extends SystemService
             mLowPowerModeSetting = lowPowerModeEnabled;
             mAutoLowPowerModeConfigured = autoLowPowerModeConfigured;
             updateLowPowerModeLocked();
+        }
+
+        final int buttonBrightnessSetting = Settings.System.getIntForUser(resolver,
+                Settings.System.BUTTON_BRIGHTNESS, mButtonBrightnessSettingDefault,
+                UserHandle.USER_CURRENT);
+        if (buttonBrightnessSetting != mButtonBrightnessSetting) {
+            mButtonBrightnessSetting = buttonBrightnessSetting;
+        }
+
+        final boolean buttonBrightnessEnabled = Settings.System.getIntForUser(resolver,
+                Settings.System.BUTTON_BRIGHTNESS_ENABLED, 1, UserHandle.USER_CURRENT) != 0;
+        if (buttonBrightnessEnabled != mButtonBrightnessEnabled) {
+            mButtonBrightnessEnabled = buttonBrightnessEnabled;
         }
 
         mDirty |= DIRTY_SETTINGS;
@@ -1343,6 +1390,7 @@ public final class PowerManagerService extends SystemService
 
         Trace.traceBegin(Trace.TRACE_TAG_POWER, "userActivity");
         try {
+            mEvent = event;
             if (eventTime > mLastInteractivePowerHintTime) {
                 powerHintInternal(PowerHint.INTERACTION, 0);
                 mLastInteractivePowerHintTime = eventTime;
@@ -1359,6 +1407,10 @@ public final class PowerManagerService extends SystemService
                     || mWakefulness == WAKEFULNESS_DOZING
                     || (flags & PowerManager.USER_ACTIVITY_FLAG_INDIRECT) != 0) {
                 return false;
+            }
+
+            if ((event & PowerManager.USER_ACTIVITY_EVENT_BUTTON) != 0) {
+                mLastButtonActivityTime = eventTime;
             }
 
             if ((flags & PowerManager.USER_ACTIVITY_FLAG_NO_CHANGE_LIGHTS) != 0) {
@@ -1632,6 +1684,35 @@ public final class PowerManagerService extends SystemService
         }
     }
 
+    private void updateButtonBrightnessIfNeededLocked(long now) {
+        if (mButtonsLight != null) {
+            final int oldBrightness = mButtonsLight.getBrightness();
+            final boolean wasOn = mButtonsLight.getBrightness() > 0;
+            final boolean awake = mWakefulness == WAKEFULNESS_AWAKE;
+            final boolean turnOffByTimeout = now >= mLastButtonActivityTime + BUTTON_ON_DURATION;
+            final boolean screenBright = (mUserActivitySummary & USER_ACTIVITY_SCREEN_BRIGHT) != 0;
+            final boolean buttonPressed = mEvent == PowerManager.USER_ACTIVITY_EVENT_BUTTON;
+            if (awake && wasOn) {
+                if (turnOffByTimeout || !screenBright || !mButtonBrightnessEnabled) {
+                    mButtonsLight.setBrightness(0);
+                } else if (buttonPressed && oldBrightness != mButtonBrightnessSetting) {
+                    mButtonsLight.setBrightness(mButtonBrightnessSetting);
+                }
+            } else if (awake && !wasOn) {
+                if (mButtonBrightnessEnabled && buttonPressed &&
+                            (mWakefulnessChanging || screenBright) && !turnOffByTimeout) {
+                    mButtonsLight.setBrightness(mButtonBrightnessSetting);
+                }
+            } else if (!awake && wasOn) {
+                mButtonsLight.setBrightness(0);
+            } else if (!screenBright && wasOn) {
+                if (mButtonBrightnessEnabled) {
+                    mButtonsLight.setBrightness(0);
+                }
+            }
+        }
+    }
+
     /**
      * Updates the global power state based on dirty bits recorded in mDirty.
      *
@@ -1678,10 +1759,13 @@ public final class PowerManagerService extends SystemService
             // Phase 3: Update dream state (depends on display ready signal).
             updateDreamLocked(dirtyPhase2, displayBecameReady);
 
-            // Phase 4: Send notifications, if needed.
+            // Phase 4: Update button lights, if needed.
+            updateButtonBrightnessIfNeededLocked(now);
+
+            // Phase 5: Send notifications, if needed.
             finishWakefulnessChangeIfNeededLocked();
 
-            // Phase 5: Update suspend blocker.
+            // Phase 6: Update suspend blocker.
             // Because we might release the last suspend blocker here, we need to make sure
             // we finished everything else first!
             updateSuspendBlockerLocked();
@@ -1951,6 +2035,9 @@ public final class PowerManagerService extends SystemService
                     nextTimeout = mLastUserActivityTime
                             + screenOffTimeout - screenDimDuration;
                     if (now < nextTimeout) {
+                        if (now < mLastUserActivityTime + BUTTON_ON_DURATION) {
+                            nextTimeout = now + BUTTON_ON_DURATION;
+                        }
                         mUserActivitySummary = USER_ACTIVITY_SCREEN_BRIGHT;
                     } else {
                         nextTimeout = mLastUserActivityTime + screenOffTimeout;
@@ -2728,7 +2815,7 @@ public final class PowerManagerService extends SystemService
     }
 
     private void shutdownOrRebootInternal(final @HaltMode int haltMode, final boolean confirm,
-            final String reason, boolean wait) {
+            final String reason, boolean wait, final boolean custom) {
         if (mHandler == null || !mSystemReady) {
             if (RescueParty.isAttemptingFactoryReset()) {
                 // If we're stuck in a really low-level reboot loop, and a
@@ -2747,7 +2834,11 @@ public final class PowerManagerService extends SystemService
                     if (haltMode == HALT_MODE_REBOOT_SAFE_MODE) {
                         ShutdownThread.rebootSafeMode(getUiContext(), confirm);
                     } else if (haltMode == HALT_MODE_REBOOT) {
-                        ShutdownThread.reboot(getUiContext(), reason, confirm);
+                        if (custom) {
+                            ShutdownThread.rebootCustom(getUiContext(), reason, confirm);
+                        } else {
+                            ShutdownThread.reboot(getUiContext(), reason, confirm);
+                        }
                     } else {
                         ShutdownThread.shutdown(getUiContext(), reason, confirm);
                     }
@@ -3076,6 +3167,16 @@ public final class PowerManagerService extends SystemService
             mUserInactiveOverrideFromWindowManager = true;
             mDirty |= DIRTY_USER_ACTIVITY;
             updatePowerStateLocked();
+        }
+    }
+
+    private void setButtonBrightnessOverrideFromWindowManagerInternal(int brightness) {
+        synchronized (mLock) {
+            if (mButtonBrightnessOverrideFromWindowManager != brightness) {
+                mButtonBrightnessOverrideFromWindowManager = brightness;
+                mDirty |= DIRTY_SETTINGS;
+                updatePowerStateLocked();
+            }
         }
     }
 
@@ -4429,7 +4530,7 @@ public final class PowerManagerService extends SystemService
 
             final long ident = Binder.clearCallingIdentity();
             try {
-                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait);
+                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait, false);
             } finally {
                 Binder.restoreCallingIdentity(ident);
             }
@@ -4448,7 +4549,29 @@ public final class PowerManagerService extends SystemService
             final long ident = Binder.clearCallingIdentity();
             try {
                 shutdownOrRebootInternal(HALT_MODE_REBOOT_SAFE_MODE, confirm,
-                        PowerManager.REBOOT_SAFE_MODE, wait);
+                        PowerManager.REBOOT_SAFE_MODE, wait, false);
+            } finally {
+                Binder.restoreCallingIdentity(ident);
+            }
+        }
+
+        /**
+         * Reboots the device.
+         *
+         * @param confirm If true, shows a reboot confirmation dialog.
+         * @param reason The reason for the reboot, or null if none.
+         * @param wait If true, this call waits for the reboot to complete and does not return.
+         */
+        @Override // Binder call
+        public void rebootCustom(boolean confirm, String reason, boolean wait) {
+            mContext.enforceCallingOrSelfPermission(android.Manifest.permission.REBOOT, null);
+            if (PowerManager.REBOOT_RECOVERY.equals(reason)) {
+                mContext.enforceCallingOrSelfPermission(android.Manifest.permission.RECOVERY, null);
+            }
+
+            final long ident = Binder.clearCallingIdentity();
+            try {
+                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait, true);
             } finally {
                 Binder.restoreCallingIdentity(ident);
             }
@@ -4466,7 +4589,7 @@ public final class PowerManagerService extends SystemService
 
             final long ident = Binder.clearCallingIdentity();
             try {
-                shutdownOrRebootInternal(HALT_MODE_SHUTDOWN, confirm, reason, wait);
+                shutdownOrRebootInternal(HALT_MODE_SHUTDOWN, confirm, reason, wait, false);
             } finally {
                 Binder.restoreCallingIdentity(ident);
             }
@@ -4683,6 +4806,15 @@ public final class PowerManagerService extends SystemService
                 screenBrightness = PowerManager.BRIGHTNESS_DEFAULT;
             }
             setScreenBrightnessOverrideFromWindowManagerInternal(screenBrightness);
+        }
+
+//        @Override
+        public void setButtonBrightnessOverrideFromWindowManager(int buttonBrightness) {
+            if (buttonBrightness < PowerManager.BRIGHTNESS_DEFAULT
+                    || buttonBrightness > PowerManager.BRIGHTNESS_ON) {
+                buttonBrightness = PowerManager.BRIGHTNESS_DEFAULT;
+            }
+            setButtonBrightnessOverrideFromWindowManagerInternal(buttonBrightness);
         }
 
         @Override

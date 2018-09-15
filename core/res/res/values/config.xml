@@ -864,7 +864,7 @@
 
     <!-- Boolean indicating whether the HWC setColorTransform function can be performed efficiently
          in hardware. -->
-    <bool name="config_setColorTransformAccelerated">false</bool>
+    <bool name="config_setColorTransformAccelerated">true</bool>
 
     <!-- Control whether Night display is available. This should only be enabled on devices
          that have a HWC implementation that can apply the matrix passed to setColorTransform
@@ -888,11 +888,11 @@
     <integer name="config_defaultNightDisplayCustomEndTime">21600000</integer>
 
     <!-- Minimum color temperature, in Kelvin, supported by Night display. -->
-    <integer name="config_nightDisplayColorTemperatureMin">2596</integer>
+    <integer name="config_nightDisplayColorTemperatureMin">1600</integer>
 
     <!-- Default color temperature, in Kelvin, to tint the screen when Night display is
          activated. -->
-    <integer name="config_nightDisplayColorTemperatureDefault">2850</integer>
+    <integer name="config_nightDisplayColorTemperatureDefault">2650</integer>
 
     <!-- Maximum color temperature, in Kelvin, supported by Night display. -->
     <integer name="config_nightDisplayColorTemperatureMax">4082</integer>
@@ -2387,6 +2387,13 @@
         <item>users</item>
     </string-array>
 
+    <!-- Defines the actions shown in advanced reboot submenu -->
+    <string-array name="config_restartActionsList">
+        <item>restart</item>
+        <item>restart_recovery</item>
+        <item>restart_bootloader</item>
+    </string-array>
+
     <!-- Number of milliseconds to hold a wake lock to ensure that drawing is fully
          flushed to the display while dozing.  This value needs to be large enough
          to account for processing and rendering time plus a frame or two of latency
@@ -3085,6 +3092,10 @@
         <item>com.android.systemui</item>
     </string-array>
 
+    <!-- Older rotation sensors are not setting event.timestamp correctly. Setting to
+         true will use SystemClock.elapsedRealtimeNanos() to set timestamp. -->
+    <bool name="config_useSystemClockforRotationSensor">false</bool>
+
     <!-- An array of packages that need to be treated as type service in battery settings -->
     <string-array translatable="false" name="config_batteryPackageTypeService"/>
 
@@ -3094,6 +3105,9 @@
     <!-- Flag indicating that the actions buttons for a notification should be tinted with by the
          color supplied by the Notification.Builder if present. -->
     <bool name="config_tintNotificationActionButtons">true</bool>
+
+    <!-- Whether to persist the notification for when a usb drive device is plugged in -->
+    <bool name="config_persistUsbDriveNotification">true</bool>
 
     <!-- Show area update info settings in CellBroadcastReceiver and information in SIM status in Settings app -->
     <bool name="config_showAreaUpdateInfoSettings">false</bool>

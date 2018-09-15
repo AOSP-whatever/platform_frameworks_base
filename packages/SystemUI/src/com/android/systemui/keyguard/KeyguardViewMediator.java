@@ -989,7 +989,7 @@ public class KeyguardViewMediator extends SystemUI {
     }
 
     private void maybeSendUserPresentBroadcast() {
-        if (mSystemReady && mLockPatternUtils.isLockScreenDisabled(
+        if (mSystemReady && isKeyguardDisabled(
                 KeyguardUpdateMonitor.getCurrentUser())) {
             // Lock screen is disabled because the user has set the preference to "None".
             // In this case, send out ACTION_USER_PRESENT here instead of in
@@ -1001,6 +1001,22 @@ public class KeyguardViewMediator extends SystemUI {
             // user sets a credential later.
             getLockPatternUtils().userPresent(KeyguardUpdateMonitor.getCurrentUser());
         }
+    }
+
+    private boolean isKeyguardDisabled(int userId) {
+        if (!mExternallyEnabled) {
+            if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled externally");
+            return true;
+        }
+        if (mLockPatternUtils.isLockScreenDisabled(userId)) {
+            if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled by setting");
+            return true;
+        }
+        if (mLockPatternUtils.isLockScreenDisabled(userId)) {
+            if (DEBUG) Log.d(TAG, "isKeyguardDisabled: keyguard is disabled by profile");
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -1289,9 +1305,11 @@ public class KeyguardViewMediator extends SystemUI {
             }
 
             boolean forceShow = options != null && options.getBoolean(OPTION_FORCE_SHOW, false);
-            if (mLockPatternUtils.isLockScreenDisabled(KeyguardUpdateMonitor.getCurrentUser())
+            if (isKeyguardDisabled(KeyguardUpdateMonitor.getCurrentUser())
                     && !lockedOrMissing && !forceShow) {
                 if (DEBUG) Log.d(TAG, "doKeyguard: not showing because lockscreen is off");
+                setShowingLocked(false);
+                hideLocked();
                 return;
             }
 
@@ -2149,6 +2167,24 @@ public class KeyguardViewMediator extends SystemUI {
             } catch (RemoteException e) {
                 Slog.w(TAG, "Failed to call to IKeyguardStateCallback", e);
             }
+        }
+    }
+
+    public void refreshSounds() {
+        ContentResolver cr = mContext.getContentResolver();
+        String soundPath = Settings.Global.getString(cr, Settings.Global.LOCK_SOUND);
+        if (soundPath != null) {
+            mLockSoundId = mLockSounds.load(soundPath, 1);
+        }
+        if (soundPath == null || mLockSoundId == 0) {
+            Log.w(TAG, "failed to load lock sound from " + soundPath);
+        }
+        soundPath = Settings.Global.getString(cr, Settings.Global.UNLOCK_SOUND);
+        if (soundPath != null) {
+            mUnlockSoundId = mLockSounds.load(soundPath, 1);
+        }
+        if (soundPath == null || mUnlockSoundId == 0) {
+            Log.w(TAG, "failed to load unlock sound from " + soundPath);
         }
     }
 }
