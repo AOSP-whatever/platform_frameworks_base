@@ -2622,6 +2622,13 @@ public abstract class PackageManager {
 
     /**
      * Feature for {@link #getSystemAvailableFeatures} and
+     * {@link #hasSystemFeature}: The device has biometric hardware to detect a fingerprint.
+     */
+    @SdkConstant(SdkConstantType.FEATURE)
+    public static final String FEATURE_FINGERPRINT_DISPLAY = "android.hardware.fingerprint.display";
+
+    /**
+     * Feature for {@link #getSystemAvailableFeatures} and
      * {@link #hasSystemFeature}: The device has biometric hardware to perform face authentication.
      */
     @SdkConstant(SdkConstantType.FEATURE)
