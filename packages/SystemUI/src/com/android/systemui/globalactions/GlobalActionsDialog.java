@@ -756,7 +756,26 @@ public class GlobalActionsDialog implements DialogInterface.OnDismissListener,
 
         @Override
         public void onPress() {
+<<<<<<< HEAD
             mScreenRecordHelper.launchRecordPrompt();
+=======
+            // Add a little delay before executing, to give the
+            // dialog a chance to go away before it takes a
+            // screenshot.
+            // TODO: instead, omit global action dialog layer
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        WindowManagerGlobal.getWindowManagerService().takeAlternativeScreenshot();
+                    } catch (RemoteException e) {
+                        Log.e("GlobalActionsDialog", "Error while trying to takeAlternativeScreenshot.", e);
+                    }
+                    MetricsLogger.action(mContext,
+                            MetricsEvent.ACTION_SCREENSHOT_POWER_MENU);
+                }
+            }, 500);
+>>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
         }
 
         @Override

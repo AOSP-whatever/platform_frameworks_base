@@ -7819,7 +7819,12 @@ public class WindowManagerService extends IWindowManager.Stub
     }
 
     @Override
+<<<<<<< HEAD
     public void sendCustomAction(Intent intent) {
         mPolicy.sendCustomAction(intent);
+=======
+    public void takeAlternativeScreenshot() {
+        mPolicy.takeAlternativeScreenshot();
+>>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
     }
 }

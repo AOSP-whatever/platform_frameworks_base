@@ -641,7 +641,14 @@ interface IWindowManager
     void syncInputTransactions();
 
     /**
+<<<<<<< HEAD
      * Send some ActionHandler commands to WindowManager.
      */
     void sendCustomAction(in Intent intent);
+=======
+     * Long screenshot
+     * @hide
+     */
+    void takeAlternativeScreenshot();
+>>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
 }

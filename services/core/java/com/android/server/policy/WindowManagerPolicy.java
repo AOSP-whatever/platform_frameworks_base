@@ -1504,7 +1504,14 @@ public interface WindowManagerPolicy extends WindowManagerPolicyConstants {
     boolean setAodShowing(boolean aodShowing);
 
     /**
+<<<<<<< HEAD
      * Send some ActionHandler commands to WindowManager.
      */
     public void sendCustomAction(Intent intent);
+=======
+     * Long screenshot
+     * @hide
+     */
+    void takeAlternativeScreenshot();
+>>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
 }
