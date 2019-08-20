@@ -84,6 +84,7 @@ import android.view.ThreadedRenderer;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewRootImpl;
 import android.view.ViewStub;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -982,13 +983,14 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
 
     @Override
     public void setBackgroundDrawable(Drawable background) {
-
         // TODO: This should route through setWindowBackground, but late in the release to make this
         // change.
         if (mOriginalBackgroundDrawable != background) {
             mOriginalBackgroundDrawable = background;
             updateBackgroundDrawable();
-            drawableChanged();
+            if (!View.sBrokenWindowBackground) {
+                drawableChanged();
+            }
         }
     }
 
@@ -1150,8 +1152,15 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
                     navBarToRightEdge || navBarToLeftEdge, navBarToLeftEdge,
                     0 /* sideInset */, animate && !disallowAnimate,
                     mForceWindowDrawsBarBackgrounds);
+            boolean oldDrawLegacy = mDrawLegacyNavigationBarBackground;
             mDrawLegacyNavigationBarBackground = mNavigationColorViewState.visible
                     && (mWindow.getAttributes().flags & FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) == 0;
+            if (oldDrawLegacy != mDrawLegacyNavigationBarBackground) {
+                ViewRootImpl vri = getViewRootImpl();
+                if (vri != null) {
+                    vri.requestInvalidateRootRenderNode();
+                }
+            }
 
             boolean statusBarNeedsRightInset = navBarToRightEdge
                     && mNavigationColorViewState.present;
@@ -1303,7 +1312,7 @@ public class DecorView extends FrameLayout implements RootViewSurfaceTaker, Wind
             return semiTransparentBarColor;
         } else if ((flags & FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS) == 0) {
             return Color.BLACK;
-        } else if (scrimTransparent && barColor == Color.TRANSPARENT) {
+        } else if (scrimTransparent && Color.alpha(barColor) == 0) {
             boolean light = (sysuiVis & lightSysuiFlag) != 0;
             return light ? SCRIM_LIGHT : semiTransparentBarColor;
         } else {

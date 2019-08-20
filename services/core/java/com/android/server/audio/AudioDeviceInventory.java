@@ -306,6 +306,8 @@ public final class AudioDeviceInventory {
                             a2dpVolume * 10,
                             AudioSystem.DEVICE_OUT_BLUETOOTH_A2DP,
                             "onBluetoothA2dpActiveDeviceChange");
+                    Log.i(TAG, "Unmuting the stream after setting device Volume.");
+                    mDeviceBroker.postAccessoryPlugMediaUnmute(AudioSystem.DEVICE_OUT_BLUETOOTH_A2DP);
                 }
             } else if (event == BtHelper.EVENT_DEVICE_CONFIG_CHANGE) {
                 if (di.mDeviceCodecFormat != a2dpCodec) {
@@ -610,6 +612,12 @@ public final class AudioDeviceInventory {
                       mConnectedDevices.put(deviceKey, new DeviceInfo(
                                  AudioSystem.DEVICE_OUT_BLUETOOTH_A2DP, BtHelper.getName(device),
                                  address, a2dpCodec));
+                      if (BtHelper.isTwsPlusSwitch(device, deviceInfo.mDeviceAddress)) {
+                          if (AudioService.DEBUG_DEVICES) {
+                              Log.d(TAG,"TWS+ device switch");
+                          }
+                          return;
+                      }
                       mDeviceBroker.postA2dpActiveDeviceChange(
                                  new BtHelper.BluetoothA2dpDeviceInfo(
                                      device, a2dpVolume, a2dpCodec));
