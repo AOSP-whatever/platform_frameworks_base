@@ -4185,17 +4185,8 @@ public final class Settings {
             SHOW_BATTERY_PERCENT,
             NOTIFICATION_VIBRATION_INTENSITY,
             HAPTIC_FEEDBACK_INTENSITY,
-<<<<<<< HEAD
-            DISPLAY_COLOR_MODE
-=======
             DISPLAY_COLOR_MODE,
-            NOTIFICATION_LIGHT_PULSE,
             OMNI_SCREENSHOT_SHUTTER_SOUND,
-<<<<<<< HEAD
->>>>>>> e756c01... [1/2] base: allow disable of screenshot shutter sound
->>>>>>> 2abb778... [1/2] base: allow disable of screenshot shutter sound
-=======
->>>>>>> 0d7d6c9... NOOB LEVEL ∞
         };
 
         /**
@@ -4402,20 +4393,8 @@ public final class Settings {
             VALIDATORS.put(WIFI_STATIC_DNS1, WIFI_STATIC_DNS1_VALIDATOR);
             VALIDATORS.put(WIFI_STATIC_DNS2, WIFI_STATIC_DNS2_VALIDATOR);
             VALIDATORS.put(SHOW_BATTERY_PERCENT, SHOW_BATTERY_PERCENT_VALIDATOR);
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> 0d7d6c9... NOOB LEVEL ∞
-            VALIDATORS.put(NOTIFICATION_LIGHT_PULSE, BOOLEAN_VALIDATOR);
             VALIDATORS.put(OMNI_SCREENSHOT_SHUTTER_SOUND,
                     OMNI_SCREENSHOT_SHUTTER_SOUND_VALIDATOR);
-<<<<<<< HEAD
->>>>>>> e756c01... [1/2] base: allow disable of screenshot shutter sound
->>>>>>> 2abb778... [1/2] base: allow disable of screenshot shutter sound
-=======
->>>>>>> 0d7d6c9... NOOB LEVEL ∞
         }
 
         /**
