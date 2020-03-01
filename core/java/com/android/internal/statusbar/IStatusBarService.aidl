@@ -163,4 +163,6 @@ interface IStatusBarService
     void setBlockedGesturalNavigation(boolean blocked);
 
     void triggerElmyraAction(String action);
+
+    void killForegroundApp();
 }
