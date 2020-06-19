@@ -77,6 +77,9 @@
     <string name="compat_mode_on" msgid="4963711187149440884">"ಪರದೆ ತುಂಬಿಸಲು ಝೂಮ್ ಮಾಡು"</string>
     <string name="compat_mode_off" msgid="7682459748279487945">"ಪರದೆ ತುಂಬಿಸಲು ವಿಸ್ತಾರಗೊಳಿಸು"</string>
     <string name="global_action_screenshot" msgid="2760267567509131654">"ಸ್ಕ್ರೀನ್‌ಶಾಟ್"</string>
+    <string name="global_action_lock_message" product="default" msgid="4466026255205186456">"ಹೆಚ್ಚಿನ ಆಯ್ಕೆಗಳಿಗಾಗಿ ನಿಮ್ಮ ಫೋನ್ ಅನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ"</string>
+    <string name="global_action_lock_message" product="tablet" msgid="7621167597240332986">"ಹೆಚ್ಚಿನ ಆಯ್ಕೆಗಳಿಗಾಗಿ ನಿಮ್ಮ ಟ್ಯಾಬ್ಲೆಟ್ ಅನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ"</string>
+    <string name="global_action_lock_message" product="device" msgid="538790401275363781">"ಹೆಚ್ಚಿನ ಆಯ್ಕೆಗಳಿಗಾಗಿ ನಿಮ್ಮ ಸಾಧನವನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ"</string>
     <string name="remote_input_image_insertion_text" msgid="4850791636452521123">"ಚಿತ್ರವನ್ನು ಕಳುಹಿಸಲಾಗಿದೆ"</string>
     <string name="screenshot_saving_ticker" msgid="6519186952674544916">"ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲಾಗುತ್ತಿದೆ…"</string>
     <string name="screenshot_saving_title" msgid="2298349784913287333">"ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲಾಗುತ್ತಿದೆ…"</string>
@@ -511,8 +514,8 @@
     <string name="manage_notifications_text" msgid="6885645344647733116">"ನಿರ್ವಹಿಸಿ"</string>
     <string name="manage_notifications_history_text" msgid="57055985396576230">"ಇತಿಹಾಸ"</string>
     <string name="notification_section_header_incoming" msgid="5295312809341711367">"ಒಳಬರುವ"</string>
-    <string name="notification_section_header_gentle" msgid="3044910806569985386">"ನಿಶ್ಶಬ್ಧ ಅಧಿಸೂಚನೆಗಳು"</string>
-    <string name="notification_section_header_alerting" msgid="3168140660646863240">"ಎಚ್ಚರಿಸುವ ಅಧಿಸೂಚನೆಗಳು"</string>
+    <string name="notification_section_header_gentle" msgid="6804099527336337197">"ನಿಶ್ಶಬ್ದ"</string>
+    <string name="notification_section_header_alerting" msgid="5581175033680477651">"ಅಧಿಸೂಚನೆಗಳು"</string>
     <string name="notification_section_header_conversations" msgid="821834744538345661">"ಸಂಭಾಷಣೆಗಳು"</string>
     <string name="accessibility_notification_section_header_gentle_clear_all" msgid="6490207897764933919">"ಎಲ್ಲಾ ನಿಶ್ಶಬ್ಧ ಅಧಿಸೂಚನೆಗಳನ್ನು ತೆರವುಗೊಳಿಸಿ"</string>
     <string name="dnd_suppressing_shade_text" msgid="5588252250634464042">"ಅಡಚಣೆ ಮಾಡಬೇಡಿ ಎನ್ನುವ ಮೂಲಕ ಅಧಿಸೂಚನೆಗಳನ್ನು ವಿರಾಮಗೊಳಿಸಲಾಗಿದೆ"</string>
@@ -592,19 +595,29 @@
     <string name="volume_odi_captions_hint_enable" msgid="2073091194012843195">"ಸಕ್ರಿಯಗೊಳಿಸಿ"</string>
     <string name="volume_odi_captions_hint_disable" msgid="2518846326748183407">"ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ"</string>
     <string name="accessibility_output_chooser" msgid="7807898688967194183">"ಔಟ್‌ಪುಟ್ ಸಾಧನವನ್ನು ಬದಲಿಸಿ"</string>
-    <string name="screen_pinning_title" msgid="7357611095909618178">"ಪರದೆಯನ್ನು ಪಿನ್ ಮಾಡಲಾಗಿದೆ"</string>
+    <!-- no translation found for screen_pinning_title (9058007390337841305) -->
+    <skip />
     <string name="screen_pinning_description" msgid="8699395373875667743">"ನೀವು ಅನ್‌ಪಿನ್ ಮಾಡುವವರೆಗೆ ಅದನ್ನು ವೀಕ್ಷಣೆಯಲ್ಲಿಡುತ್ತದೆ. ಸ್ಪರ್ಶಿಸಿ ಮತ್ತು ಹಿಡಿದುಕೊಳ್ಳಿ ಹಾಗೂ ಅನ್‌ಪಿನ್ ಮಾಡಲು ಅವಲೋಕಿಸಿ."</string>
     <string name="screen_pinning_description_recents_invisible" msgid="4564466648700390037">"ನೀವು ಅನ್‌ಪಿನ್ ಮಾಡುವವರೆಗೆ ಅದನ್ನು ವೀಕ್ಷಣೆಯಲ್ಲಿಡುತ್ತದೆ. ಸ್ಪರ್ಶಿಸಿ ಮತ್ತು ಹಿಡಿದುಕೊಳ್ಳಿ ಹಾಗೂ ಅನ್‌ಪಿನ್ ಮಾಡಲು ಮುಖಪುಟಕ್ಕೆ ಹಿಂತಿರುಗಿ."</string>
     <string name="screen_pinning_description_gestural" msgid="7246323931831232068">"ನೀವು ಅನ್‌ಪಿನ್ ಮಾಡುವವರೆಗೆ ಅದನ್ನು ವೀಕ್ಷಣೆಯಲ್ಲಿಡುತ್ತದೆ. ಮೇಲೆ ಸ್ವೈಪ್ ಮಾಡಿ ಮತ್ತು ಅನ್‌ಪಿನ್ ಮಾಡಲು ಹೋಲ್ಡ್ ಮಾಡಿ."</string>
     <string name="screen_pinning_description_accessible" msgid="7386449191953535332">"ನೀವು ಅನ್‌ಪಿನ್ ಮಾಡುವವರೆಗೆ ಅದನ್ನು ವೀಕ್ಷಣೆಯಲ್ಲಿಡುತ್ತದೆ. ಅನ್‌ಪಿನ್ ಮಾಡಲು ಅವಲೋಕನವನ್ನು ಸ್ಪರ್ಶಿಸಿ ಮತ್ತು ಹೋಲ್ಡ್ ಮಾಡಿ."</string>
     <string name="screen_pinning_description_recents_invisible_accessible" msgid="2857071808674481986">"ನೀವು ಅನ್‌ಪಿನ್ ಮಾಡುವವರೆಗೆ ಅದನ್ನು ವೀಕ್ಷಣೆಯಲ್ಲಿಡುತ್ತದೆ. ಅನ್‌ಪಿನ್ ಮಾಡಲು ಮುಖಪುಟವನ್ನು ಸ್ಪರ್ಶಿಸಿ ಮತ್ತು ಒತ್ತಿಹಿಡಿಯಿರಿ."</string>
-    <string name="screen_pinning_toast" msgid="2083944237147005811">"ಈ ಪರದೆಯನ್ನು ಅನ್‌ಪಿನ್ ಮಾಡಲು, ಹಿಂದಕ್ಕೆ ಮತ್ತು ಸಮಗ್ರ ನೋಟ ಬಟನ್‌ಗಳನ್ನು ಸ್ಪರ್ಶಿಸಿ ಒತ್ತಿಹಿಡಿಯಿರಿ"</string>
-    <string name="screen_pinning_toast_recents_invisible" msgid="6343770487795352573">"ಈ ಪರದೆಯನ್ನು ಅನ್‌ಪಿನ್ ಮಾಡಲು, ಹಿಂದಕ್ಕೆ ಮತ್ತು ಮುಖಪುಟ ಬಟನ್‌ಗಳನ್ನು ಸ್ಪರ್ಶಿಸಿ ಒತ್ತಿಹಿಡಿಯಿರಿ"</string>
-    <string name="screen_pinning_toast_gesture_nav" msgid="2884536903398445645">"ಈ ಸ್ಕ್ರೀನ್‌ ಅನ್ನು ಅನ್‌ಪಿನ್ ಮಾಡಲು, ಮೇಲಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ &amp; ಒತ್ತಿ ಹಿಡಿದುಕೊಳ್ಳಿ"</string>
+    <!-- no translation found for screen_pinning_exposes_personal_data (8189852022981524789) -->
+    <skip />
+    <!-- no translation found for screen_pinning_can_open_other_apps (7529756813231421455) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast (8177286912533744328) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast_recents_invisible (6850978077443052594) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast_gesture_nav (170699893395336705) -->
+    <skip />
     <string name="screen_pinning_positive" msgid="3285785989665266984">"ತಿಳಿಯಿತು"</string>
     <string name="screen_pinning_negative" msgid="6882816864569211666">"ಧನ್ಯವಾದಗಳು"</string>
-    <string name="screen_pinning_start" msgid="5695091877402422575">"ಪರದೆಯನ್ನು ಪಿನ್‌ ಮಾಡಲಾಗಿದೆ"</string>
-    <string name="screen_pinning_exit" msgid="5114993350662745840">"ಪರದೆಯನ್ನು ಅನ್‌ಪಿನ್‌ ಮಾಡಲಾಗಿದೆ"</string>
+    <!-- no translation found for screen_pinning_start (7483998671383371313) -->
+    <skip />
+    <!-- no translation found for screen_pinning_exit (4553787518387346893) -->
+    <skip />
     <string name="quick_settings_reset_confirmation_title" msgid="463533331480997595">"<xliff:g id="TILE_LABEL">%1$s</xliff:g> ಮರೆಮಾಡುವುದೇ?"</string>
     <string name="quick_settings_reset_confirmation_message" msgid="2320586180785674186">"ನೀವು ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅದನ್ನು ಆನ್ ಮಾಡಿದಾಗ ಅದು ಮರುಕಾಣಿಸಿಕೊಳ್ಳುತ್ತದೆ."</string>
     <string name="quick_settings_reset_confirmation_button" msgid="3341477479055016776">"ಮರೆಮಾಡಿ"</string>
@@ -707,13 +720,14 @@
     <string name="inline_turn_off_notifications" msgid="8543989584403106071">"ಅಧಿಸೂಚನೆಗಳನ್ನು ಆಫ್ ಮಾಡಿ"</string>
     <string name="inline_keep_showing_app" msgid="4393429060390649757">"ಈ ಅಪ್ಲಿಕೇಶನ್‌ನಿಂದ ಅಧಿಸೂಚನೆಗಳನ್ನು ತೋರಿಸುತ್ತಲೇ ಇರಬೇಕೆ?"</string>
     <string name="notification_silence_title" msgid="8608090968400832335">"ನಿಶ್ಶಬ್ದ"</string>
-    <string name="notification_alert_title" msgid="7629202599338071971">"ಎಚ್ಚರಿಸಲಾಗುತ್ತಿದೆ"</string>
+    <string name="notification_alert_title" msgid="3656229781017543655">"ಡೀಫಾಲ್ಟ್"</string>
     <string name="notification_bubble_title" msgid="8330481035191903164">"ಬಬಲ್"</string>
-    <string name="notification_channel_summary_low" msgid="7300447764759926720">"ಶಬ್ದ ಅಥವಾ ವೈಬ್ರೇಷನ್ ಇರದಂತೆ ನಿಮಗೆ ಗಮನಹರಿಸಲು ಸಹಾಯ ಮಾಡುತ್ತದೆ."</string>
-    <string name="notification_channel_summary_default" msgid="3539949463907902037">"ಧ್ವನಿ ಅಥವಾ ವೈಬ್ರೇಷನ್ ಮೂಲಕ ನಿಮ್ಮ ಗಮನವನ್ನು ಸೆಳೆಯುತ್ತದೆ."</string>
-    <string name="notification_channel_summary_default_with_bubbles" msgid="6298026344552480458">"ಧ್ವನಿ ಅಥವಾ ವೈಬ್ರೇಷನ್ ಮೂಲಕ ನಿಮ್ಮ ಗಮನವನ್ನು ಸೆಳೆಯುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ, <xliff:g id="APP_NAME">%1$s</xliff:g> ನ ಬಬಲ್ ಸಂಭಾಷಣೆಗಳು."</string>
+    <string name="notification_channel_summary_low" msgid="4860617986908931158">"ಯಾವುದೇ ಧ್ವನಿ ಅಥವಾ ವೈಬ್ರೇಷನ್‌ ಆಗುವುದಿಲ್ಲ"</string>
+    <string name="notification_conversation_summary_low" msgid="1734433426085468009">"ಯಾವುದೇ ಧ್ವನಿ ಅಥವಾ ವೈಬ್ರೇಷನ್‌ ಆಗುವುದಿಲ್ಲ, ಸಂಭಾಷಣೆ ವಿಭಾಗದ ಕೆಳಭಾಗದಲ್ಲಿ ಗೋಚರಿಸುತ್ತದೆ"</string>
+    <string name="notification_channel_summary_default" msgid="3282930979307248890">"ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಆಧರಿಸಿ ಫೋನ್ ರಿಂಗ್ ಅಥವಾ ವೈಬ್ರೇಟ್ ಆಗುತ್ತದೆ"</string>
+    <string name="notification_channel_summary_default_with_bubbles" msgid="1782419896613644568">"ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಆಧರಿಸಿ ಫೋನ್ ರಿಂಗ್ ಅಥವಾ ವೈಬ್ರೇಟ್ ಆಗುತ್ತದೆ. ಡಿಫಾಲ್ಟ್ ಆಗಿ, <xliff:g id="APP_NAME">%1$s</xliff:g> ನ ಬಬಲ್ ಸಂಭಾಷಣೆಗಳು."</string>
     <string name="notification_channel_summary_bubble" msgid="7235935211580860537">"ಈ ವಿಷಯಕ್ಕೆ ಲಿಂಕ್ ಮಾಡಿ ಕೊಂಡೊಯ್ಯುವ ಶಾರ್ಟ್‌ಕಟ್‌ ಕಡೆಗೆ ಗಮನ ಇರಿಸಿ."</string>
-    <string name="notification_channel_summary_priority" msgid="7415770044553264622">"ಸಂಭಾಷಣೆ ವಿಭಾಗದ ಮೇಲ್ಬಾಗದಲ್ಲಿ ಕಾಣಿಸುತ್ತದೆ ಮತ್ತು ಬಬಲ್‌ನಂತೆ ಗೋಚರಿಸುತ್ತದೆ."</string>
+    <string name="notification_channel_summary_priority" msgid="7952654515769021553">"ಸಂಭಾಷಣೆ ವಿಭಾಗದ ಮೇಲ್ಭಾಗದಲ್ಲಿ ತೇಲುವ ಬಬಲ್‌ ಆಗಿ ಗೋಚರಿಸುತ್ತದೆ ಮತ್ತು ಪ್ರೊಫೈಲ್ ಚಿತ್ರವನ್ನು ಲಾಕ್‌ಸ್ಕ್ರೀನ್‌ ಮೇಲೆ‌ ಗೋಚರಿಸುತ್ತದೆ"</string>
     <string name="notification_conversation_channel_settings" msgid="2409977688430606835">"ಸೆಟ್ಟಿಂಗ್‌ಗಳು"</string>
     <string name="notification_priority_title" msgid="2079708866333537093">"ಆದ್ಯತೆ"</string>
     <string name="no_shortcut" msgid="7176375126961212514">"<xliff:g id="APP_NAME">%1$s</xliff:g> ಆ್ಯಪ್ ಸಂಭಾಷಣೆ ನಿರ್ದಿಷ್ಟ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಬೆಂಬಲಿಸುವುದಿಲ್ಲ"</string>
@@ -1027,6 +1041,13 @@
       <item quantity="one"><xliff:g id="NUMBER_1">%s</xliff:g> ನಿಯಂತ್ರಣಗಳನ್ನು ಸೇರಿಸಲಾಗಿದೆ.</item>
       <item quantity="other"><xliff:g id="NUMBER_1">%s</xliff:g> ನಿಯಂತ್ರಣಗಳನ್ನು ಸೇರಿಸಲಾಗಿದೆ.</item>
     </plurals>
+    <string name="controls_removed" msgid="3731789252222856959">"ತೆಗೆದುಹಾಕಲಾಗಿದೆ"</string>
+    <string name="accessibility_control_favorite" msgid="8694362691985545985">"ಮೆಚ್ಚಲಾಗಿರುವುದು"</string>
+    <string name="accessibility_control_favorite_position" msgid="54220258048929221">"ಮೆಚ್ಚಲಾಗಿರುವುದು, ಸ್ಥಾನ <xliff:g id="NUMBER">%d</xliff:g>"</string>
+    <string name="accessibility_control_not_favorite" msgid="1291760269563092359">"ಮೆಚ್ಚಿನದಲ್ಲದ್ದು"</string>
+    <string name="accessibility_control_change_favorite" msgid="2943178027582253261">"ಮೆಚ್ಚಿನ"</string>
+    <string name="accessibility_control_change_unfavorite" msgid="6997408061750740327">"ಮೆಚ್ಚಿನದಲ್ಲದ್ದು"</string>
+    <string name="accessibility_control_move" msgid="8980344493796647792">"ಸ್ಥಾನ <xliff:g id="NUMBER">%d</xliff:g> ಕ್ಕೆ ಸರಿಸಿ"</string>
     <string name="controls_favorite_default_title" msgid="967742178688938137">"ನಿಯಂತ್ರಣಗಳು"</string>
     <string name="controls_favorite_subtitle" msgid="6604402232298443956">"ಪವರ್ ಮೆನುವಿನಿಂದ ಪ್ರವೇಶಿಸಲು ನಿಯಂತ್ರಣಗಳನ್ನು ಆರಿಸಿ"</string>
     <string name="controls_favorite_rearrange" msgid="5616952398043063519">"ನಿಯಂತ್ರಣಗಳನ್ನು ಮರುಹೊಂದಿಸಲು ಹೋಲ್ಡ್ ಮಾಡಿ ಮತ್ತು ಡ್ರ್ಯಾಗ್‌ ಮಾಡಿ"</string>

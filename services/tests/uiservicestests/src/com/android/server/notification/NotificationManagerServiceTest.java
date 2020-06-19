@@ -6135,8 +6135,6 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
                 "tag", mUid, 0, nb.build(), new UserHandle(mUid), null, 0);
         NotificationRecord nr = new NotificationRecord(mContext, sbn, mTestNotificationChannel);
 
-
-
         // Test: Send the bubble notification
         mBinderService.enqueueNotificationWithTag(PKG, PKG, nr.getSbn().getTag(),
                 nr.getSbn().getId(), nr.getSbn().getNotification(), nr.getSbn().getUserId());
@@ -6154,7 +6152,7 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
         // Make sure the shortcut is cached.
         verify(mShortcutServiceInternal).cacheShortcuts(
                 anyInt(), any(), eq(PKG), eq(Collections.singletonList(VALID_CONVO_SHORTCUT_ID)),
-                eq(USER_SYSTEM));
+                eq(USER_SYSTEM), eq(ShortcutInfo.FLAG_CACHED_NOTIFICATIONS));
 
         // Test: Remove the shortcut
         when(mLauncherApps.getShortcuts(any(), any())).thenReturn(null);
@@ -6168,11 +6166,11 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
         verify(mLauncherApps, times(1)).unregisterCallback(launcherAppsCallback.getValue());
 
         // We're no longer a bubble
-        Notification notif2 = mService.getNotificationRecord(
-                nr.getSbn().getKey()).getNotification();
-        assertFalse(notif2.isBubbleNotification());
+        NotificationRecord notif2 = mService.getNotificationRecord(
+                nr.getSbn().getKey());
+        assertNull(notif2.getShortcutInfo());
+        assertFalse(notif2.getNotification().isBubbleNotification());
     }
-
 
     @Test
     public void testNotificationBubbles_shortcut_stopListeningWhenNotifRemoved()
@@ -6227,7 +6225,7 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
         // Make sure the shortcut is cached.
         verify(mShortcutServiceInternal).cacheShortcuts(
                 anyInt(), any(), eq(PKG), eq(Collections.singletonList(shortcutId)),
-                eq(USER_SYSTEM));
+                eq(USER_SYSTEM), eq(ShortcutInfo.FLAG_CACHED_NOTIFICATIONS));
 
         // Test: Remove the notification
         mBinderService.cancelNotificationWithTag(PKG, PKG, nr.getSbn().getTag(),
@@ -6557,7 +6555,7 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
         when(si.getPackage()).thenReturn(PKG_P);
         when(si.getId()).thenReturn("convo");
         when(si.getUserId()).thenReturn(USER_SYSTEM);
-        when(si.getShortLabel()).thenReturn("Hello");
+        when(si.getLabel()).thenReturn("Hello");
         when(si.isLongLived()).thenReturn(true);
         when(si.isEnabled()).thenReturn(true);
         when(mLauncherApps.getShortcuts(any(), any())).thenReturn(Arrays.asList(si));
@@ -6591,7 +6589,7 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
         when(si.getPackage()).thenReturn(PKG_P);
         when(si.getId()).thenReturn("convo");
         when(si.getUserId()).thenReturn(USER_SYSTEM);
-        when(si.getShortLabel()).thenReturn("Hello");
+        when(si.getLabel()).thenReturn("Hello");
         when(si.isLongLived()).thenReturn(false);
         when(mLauncherApps.getShortcuts(any(), any())).thenReturn(Arrays.asList(si));
 

@@ -16,14 +16,13 @@
 
 package android.net.ip;
 
-import static android.net.InetAddresses.parseNumericAddress;
 import static android.net.RouteInfo.RTN_UNICAST;
 import static android.net.TetheringManager.TetheringRequest.checkStaticAddressConfiguration;
 import static android.net.dhcp.IDhcpServer.STATUS_SUCCESS;
 import static android.net.shared.Inet4AddressUtils.intToInet4AddressHTH;
-import static android.net.util.NetworkConstants.FF;
 import static android.net.util.NetworkConstants.RFC7421_PREFIX_LENGTH;
 import static android.net.util.NetworkConstants.asByte;
+import static android.net.util.PrefixUtils.asIpPrefix;
 import static android.net.util.TetheringMessageBase.BASE_IPSERVER;
 import static android.system.OsConstants.RT_SCOPE_UNIVERSE;
 
@@ -50,6 +49,7 @@ import android.net.shared.NetdUtils;
 import android.net.shared.RouteUtils;
 import android.net.util.InterfaceParams;
 import android.net.util.InterfaceSet;
+import android.net.util.PrefixUtils;
 import android.net.util.SharedLog;
 import android.os.Handler;
 import android.os.Looper;
@@ -60,15 +60,16 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.android.internal.util.MessageUtils;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
+import com.android.networkstack.tethering.PrivateAddressCoordinator;
 
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -106,20 +107,8 @@ public class IpServer extends StateMachine {
 
     private static final byte DOUG_ADAMS = (byte) 42;
 
-    private static final String USB_NEAR_IFACE_ADDR = "192.168.42.129";
-    private static final int USB_PREFIX_LENGTH = 24;
-    private static final String WIFI_HOST_IFACE_ADDR = "192.168.43.1";
-    private static final int WIFI_HOST_IFACE_PREFIX_LENGTH = 24;
-    private static final String WIFI_P2P_IFACE_ADDR = "192.168.49.1";
-    private static final int WIFI_P2P_IFACE_PREFIX_LENGTH = 24;
-    private static final String ETHERNET_IFACE_ADDR = "192.168.50.1";
-    private static final int ETHERNET_IFACE_PREFIX_LENGTH = 24;
-    private static final String WIGIG_HOST_IFACE_ADDR = "192.168.51.1";
-    private static final int WIGIG_HOST_IFACE_PREFIX_LENGTH = 24;
-
     // TODO: have PanService use some visible version of this constant
-    private static final String BLUETOOTH_IFACE_ADDR = "192.168.44.1";
-    private static final int BLUETOOTH_DHCP_PREFIX_LENGTH = 24;
+    private static final String BLUETOOTH_IFACE_ADDR = "192.168.44.1/24";
 
     // TODO: have this configurable
     private static final int DHCP_LEASE_TIME_SECS = 3600;
@@ -158,6 +147,14 @@ public class IpServer extends StateMachine {
          * Notify that the DHCP leases changed in one of the IpServers.
          */
         public void dhcpLeasesChanged() { }
+
+        /**
+         * Request Tethering change.
+         *
+         * @param tetheringType the downstream type of this IpServer.
+         * @param enabled enable or disable tethering.
+         */
+        public void requestEnableTethering(int tetheringType, boolean enabled) { }
     }
 
     /** Capture IpServer dependencies, for injection. */
@@ -187,6 +184,7 @@ public class IpServer extends StateMachine {
                 return 0;
             }
         }
+
         /** Create a DhcpServer instance to be used by IpServer. */
         public abstract void makeDhcpServer(String ifName, DhcpServingParamsParcel params,
                 DhcpServerCallbacks cb);
@@ -214,16 +212,22 @@ public class IpServer extends StateMachine {
     public static final int CMD_IPV6_TETHER_UPDATE          = BASE_IPSERVER + 10;
     // new neighbor cache entry on our interface
     public static final int CMD_NEIGHBOR_EVENT              = BASE_IPSERVER + 11;
+    // request from DHCP server that it wants to have a new prefix
+    public static final int CMD_NEW_PREFIX_REQUEST          = BASE_IPSERVER + 12;
+    // request from PrivateAddressCoordinator to restart tethering.
+    public static final int CMD_NOTIFY_PREFIX_CONFLICT      = BASE_IPSERVER + 13;
 
     private final State mInitialState;
     private final State mLocalHotspotState;
     private final State mTetheredState;
     private final State mUnavailableState;
+    private final State mWaitingForRestartState;
 
     private final SharedLog mLog;
     private final INetd mNetd;
     private final Callback mCallback;
     private final InterfaceController mInterfaceCtrl;
+    private final PrivateAddressCoordinator mPrivateAddressCoordinator;
 
     private final String mIfaceName;
     private final int mInterfaceType;
@@ -250,7 +254,6 @@ public class IpServer extends StateMachine {
     private int mDhcpServerStartIndex = 0;
     private IDhcpServer mDhcpServer;
     private RaParams mLastRaParams;
-    private LinkAddress mIpv4Address;
 
     private LinkAddress mStaticIpv4ServerAddr;
     private LinkAddress mStaticIpv4ClientAddr;
@@ -305,12 +308,14 @@ public class IpServer extends StateMachine {
 
     private final IpNeighborMonitor mIpNeighborMonitor;
 
+    private LinkAddress mIpv4Address;
+
     // TODO: Add a dependency object to pass the data members or variables from the tethering
     // object. It helps to reduce the arguments of the constructor.
     public IpServer(
             String ifaceName, Looper looper, int interfaceType, SharedLog log,
             INetd netd, Callback callback, boolean usingLegacyDhcp, boolean usingBpfOffload,
-            Dependencies deps) {
+            PrivateAddressCoordinator addressCoordinator, Dependencies deps) {
         super(ifaceName, looper);
         mLog = log.forSubComponent(ifaceName);
         mNetd = netd;
@@ -321,6 +326,7 @@ public class IpServer extends StateMachine {
         mLinkProperties = new LinkProperties();
         mUsingLegacyDhcp = usingLegacyDhcp;
         mUsingBpfOffload = usingBpfOffload;
+        mPrivateAddressCoordinator = addressCoordinator;
         mDeps = deps;
         resetLinkProperties();
         mLastError = TetheringManager.TETHER_ERROR_NO_ERROR;
@@ -341,9 +347,11 @@ public class IpServer extends StateMachine {
         mLocalHotspotState = new LocalHotspotState();
         mTetheredState = new TetheredState();
         mUnavailableState = new UnavailableState();
+        mWaitingForRestartState = new WaitingForRestartState();
         addState(mInitialState);
         addState(mLocalHotspotState);
         addState(mTetheredState);
+        addState(mWaitingForRestartState, mTetheredState);
         addState(mUnavailableState);
 
         setInitialState(mInitialState);
@@ -374,6 +382,11 @@ public class IpServer extends StateMachine {
     /** The properties of the network link which IpServer is serving. */
     public LinkProperties linkProperties() {
         return new LinkProperties(mLinkProperties);
+    }
+
+    /** The address which IpServer is using. */
+    public LinkAddress getAddress() {
+        return mIpv4Address;
     }
 
     /**
@@ -464,7 +477,7 @@ public class IpServer extends StateMachine {
                                 handleError();
                             }
                         }
-                    }, new DhcpLeaseCallback());
+                    }, new DhcpEventCallback());
                 } catch (RemoteException e) {
                     throw new IllegalStateException(e);
                 }
@@ -477,7 +490,7 @@ public class IpServer extends StateMachine {
         }
     }
 
-    private class DhcpLeaseCallback extends IDhcpEventCallbacks.Stub {
+    private class DhcpEventCallback extends IDhcpEventCallbacks.Stub {
         @Override
         public void onLeasesChanged(List<DhcpLeaseParcelable> leaseParcelables) {
             final ArrayList<TetheredClient> leases = new ArrayList<>();
@@ -511,8 +524,9 @@ public class IpServer extends StateMachine {
         }
 
         @Override
-        public void onNewPrefixRequest(IpPrefix currentPrefix) {
-            //TODO: add specific implementation.
+        public void onNewPrefixRequest(@NonNull final IpPrefix currentPrefix) {
+            Objects.requireNonNull(currentPrefix);
+            sendMessage(CMD_NEW_PREFIX_REQUEST, currentPrefix);
         }
 
         @Override
@@ -526,26 +540,38 @@ public class IpServer extends StateMachine {
         }
     }
 
+    private RouteInfo getDirectConnectedRoute(@NonNull final LinkAddress ipv4Address) {
+        Objects.requireNonNull(ipv4Address);
+        return new RouteInfo(PrefixUtils.asIpPrefix(ipv4Address), null, mIfaceName, RTN_UNICAST);
+    }
+
+    private DhcpServingParamsParcel makeServingParams(@NonNull final Inet4Address defaultRouter,
+            @NonNull final Inet4Address dnsServer, @NonNull LinkAddress serverAddr,
+            @Nullable Inet4Address clientAddr) {
+        final boolean changePrefixOnDecline =
+                (mInterfaceType == TetheringManager.TETHERING_NCM && clientAddr == null);
+        return new DhcpServingParamsParcelExt()
+            .setDefaultRouters(defaultRouter)
+            .setDhcpLeaseTimeSecs(DHCP_LEASE_TIME_SECS)
+            .setDnsServers(dnsServer)
+            .setServerAddr(serverAddr)
+            .setMetered(true)
+            .setSingleClientAddr(clientAddr)
+            .setChangePrefixOnDecline(changePrefixOnDecline);
+            // TODO: also advertise link MTU
+    }
+
     private boolean startDhcp(final LinkAddress serverLinkAddr, final LinkAddress clientLinkAddr) {
         if (mUsingLegacyDhcp) {
             return true;
         }
 
         final Inet4Address addr = (Inet4Address) serverLinkAddr.getAddress();
-        final int prefixLen = serverLinkAddr.getPrefixLength();
         final Inet4Address clientAddr = clientLinkAddr == null ? null :
                 (Inet4Address) clientLinkAddr.getAddress();
 
-        final DhcpServingParamsParcel params;
-        params = new DhcpServingParamsParcelExt()
-                .setDefaultRouters(addr)
-                .setDhcpLeaseTimeSecs(DHCP_LEASE_TIME_SECS)
-                .setDnsServers(addr)
-                .setServerAddr(serverLinkAddr)
-                .setMetered(true)
-                .setSingleClientAddr(clientAddr);
-        // TODO: also advertise link MTU
-
+        final DhcpServingParamsParcel params = makeServingParams(addr /* defaultRouter */,
+                addr /* dnsServer */, serverLinkAddr, clientAddr);
         mDhcpServerStartIndex++;
         mDeps.makeDhcpServer(
                 mIfaceName, params, new DhcpServerCallbacksImpl(mDhcpServerStartIndex));
@@ -572,7 +598,7 @@ public class IpServer extends StateMachine {
                 });
                 mDhcpServer = null;
             } catch (RemoteException e) {
-                mLog.e("Error stopping DHCP", e);
+                mLog.e("Error stopping DHCP server", e);
                 // Not much more we can do here
             }
         }
@@ -593,6 +619,7 @@ public class IpServer extends StateMachine {
         // NOTE: All of configureIPv4() will be refactored out of existence
         // into calls to InterfaceController, shared with startIPv4().
         mInterfaceCtrl.clearIPv4Address();
+        mPrivateAddressCoordinator.releaseDownstream(this);
         mIpv4Address = null;
         mStaticIpv4ServerAddr = null;
         mStaticIpv4ClientAddr = null;
@@ -601,45 +628,23 @@ public class IpServer extends StateMachine {
     private boolean configureIPv4(boolean enabled) {
         if (VDBG) Log.d(TAG, "configureIPv4(" + enabled + ")");
 
-        // TODO: Replace this hard-coded information with dynamically selected
-        // config passed down to us by a higher layer IP-coordinating element.
-        final Inet4Address srvAddr;
-        int prefixLen = 0;
-        try {
-            if (mStaticIpv4ServerAddr != null) {
-                srvAddr = (Inet4Address) mStaticIpv4ServerAddr.getAddress();
-                prefixLen = mStaticIpv4ServerAddr.getPrefixLength();
-            } else if (mInterfaceType == TetheringManager.TETHERING_USB
-                    || mInterfaceType == TetheringManager.TETHERING_NCM) {
-                srvAddr = (Inet4Address) parseNumericAddress(USB_NEAR_IFACE_ADDR);
-                prefixLen = USB_PREFIX_LENGTH;
-            } else if (mInterfaceType == TetheringManager.TETHERING_WIFI) {
-                srvAddr = (Inet4Address) parseNumericAddress(getRandomWifiIPv4Address());
-                prefixLen = WIFI_HOST_IFACE_PREFIX_LENGTH;
-            } else if (mInterfaceType == TetheringManager.TETHERING_WIFI_P2P) {
-                srvAddr = (Inet4Address) parseNumericAddress(WIFI_P2P_IFACE_ADDR);
-                prefixLen = WIFI_P2P_IFACE_PREFIX_LENGTH;
-            } else if (mInterfaceType == TetheringManager.TETHERING_ETHERNET) {
-                // TODO: randomize address for tethering too, similarly to wifi
-                srvAddr = (Inet4Address) parseNumericAddress(ETHERNET_IFACE_ADDR);
-                prefixLen = ETHERNET_IFACE_PREFIX_LENGTH;
-            } else if (mInterfaceType == TetheringManager.TETHERING_WIGIG) {
-                srvAddr = (Inet4Address) parseNumericAddress(WIGIG_HOST_IFACE_ADDR);
-                prefixLen = WIGIG_HOST_IFACE_PREFIX_LENGTH;
-            } else {
-                // BT configures the interface elsewhere: only start DHCP.
-                // TODO: make all tethering types behave the same way, and delete the bluetooth
-                // code that calls into NetworkManagementService directly.
-                srvAddr = (Inet4Address) parseNumericAddress(BLUETOOTH_IFACE_ADDR);
-                mIpv4Address = new LinkAddress(srvAddr, BLUETOOTH_DHCP_PREFIX_LENGTH);
-                return configureDhcp(enabled, mIpv4Address, null /* clientAddress */);
-            }
-            mIpv4Address = new LinkAddress(srvAddr, prefixLen);
-        } catch (IllegalArgumentException e) {
-            mLog.e("Error selecting ipv4 address", e);
-            if (!enabled) stopDhcp();
+        if (enabled) {
+            mIpv4Address = requestIpv4Address();
+        }
+
+        if (mIpv4Address == null) {
+            mLog.e("No available ipv4 address");
             return false;
         }
+
+        if (mInterfaceType == TetheringManager.TETHERING_BLUETOOTH) {
+            // BT configures the interface elsewhere: only start DHCP.
+            // TODO: make all tethering types behave the same way, and delete the bluetooth
+            // code that calls into NetworkManagementService directly.
+            return configureDhcp(enabled, mIpv4Address, null /* clientAddress */);
+        }
+
+        final IpPrefix ipv4Prefix = asIpPrefix(mIpv4Address);
 
         final Boolean setIfaceUp;
         if (mInterfaceType == TetheringManager.TETHERING_WIFI
@@ -658,29 +663,24 @@ public class IpServer extends StateMachine {
             return false;
         }
 
-        // Directly-connected route.
-        final IpPrefix ipv4Prefix = new IpPrefix(mIpv4Address.getAddress(),
-                mIpv4Address.getPrefixLength());
-        final RouteInfo route = new RouteInfo(ipv4Prefix, null, null, RTN_UNICAST);
         if (enabled) {
             mLinkProperties.addLinkAddress(mIpv4Address);
-            mLinkProperties.addRoute(route);
+            mLinkProperties.addRoute(getDirectConnectedRoute(mIpv4Address));
         } else {
             mLinkProperties.removeLinkAddress(mIpv4Address);
-            mLinkProperties.removeRoute(route);
+            mLinkProperties.removeRoute(getDirectConnectedRoute(mIpv4Address));
         }
-
         return configureDhcp(enabled, mIpv4Address, mStaticIpv4ClientAddr);
     }
 
-    private String getRandomWifiIPv4Address() {
-        try {
-            byte[] bytes = parseNumericAddress(WIFI_HOST_IFACE_ADDR).getAddress();
-            bytes[3] = getRandomSanitizedByte(DOUG_ADAMS, asByte(0), asByte(1), FF);
-            return InetAddress.getByAddress(bytes).getHostAddress();
-        } catch (Exception e) {
-            return WIFI_HOST_IFACE_ADDR;
+    private LinkAddress requestIpv4Address() {
+        if (mStaticIpv4ServerAddr != null) return mStaticIpv4ServerAddr;
+
+        if (mInterfaceType == TetheringManager.TETHERING_BLUETOOTH) {
+            return new LinkAddress(BLUETOOTH_IFACE_ADDR);
         }
+
+        return mPrivateAddressCoordinator.requestDownstreamAddress(this);
     }
 
     private boolean startIPv6() {
@@ -716,7 +716,7 @@ public class IpServer extends StateMachine {
     //
     // TODO: Evaluate using a data structure than is more directly suited to
     // communicating only the relevant information.
-    private void updateUpstreamIPv6LinkProperties(LinkProperties v6only) {
+    private void updateUpstreamIPv6LinkProperties(LinkProperties v6only, int ttlAdjustment) {
         if (mRaDaemon == null) return;
 
         // Avoid unnecessary work on spurious updates.
@@ -739,7 +739,7 @@ public class IpServer extends StateMachine {
             params.mtu = mUsingBpfOffload ? v6only.getMtu() - 16 : v6only.getMtu();
             params.hasDefaultRoute = v6only.hasIpv6DefaultRoute();
 
-            if (params.hasDefaultRoute) params.hopLimit = getHopLimit(upstreamIface);
+            if (params.hasDefaultRoute) params.hopLimit = getHopLimit(upstreamIface, ttlAdjustment);
 
             for (LinkAddress linkAddr : v6only.getLinkAddresses()) {
                 if (linkAddr.getPrefixLength() != RFC7421_PREFIX_LENGTH) continue;
@@ -767,21 +767,43 @@ public class IpServer extends StateMachine {
         mLastIPv6UpstreamIfindex = upstreamIfindex;
     }
 
+    private void removeRoutesFromLocalNetwork(@NonNull final List<RouteInfo> toBeRemoved) {
+        final int removalFailures = RouteUtils.removeRoutesFromLocalNetwork(
+                mNetd, toBeRemoved);
+        if (removalFailures > 0) {
+            mLog.e(String.format("Failed to remove %d IPv6 routes from local table.",
+                    removalFailures));
+        }
+
+        for (RouteInfo route : toBeRemoved) mLinkProperties.removeRoute(route);
+    }
+
+    private void addRoutesToLocalNetwork(@NonNull final List<RouteInfo> toBeAdded) {
+        try {
+            // It's safe to call networkAddInterface() even if
+            // the interface is already in the local_network.
+            mNetd.networkAddInterface(INetd.LOCAL_NET_ID, mIfaceName);
+            try {
+                // Add routes from local network. Note that adding routes that
+                // already exist does not cause an error (EEXIST is silently ignored).
+                RouteUtils.addRoutesToLocalNetwork(mNetd, mIfaceName, toBeAdded);
+            } catch (IllegalStateException e) {
+                mLog.e("Failed to add IPv4/v6 routes to local table: " + e);
+                return;
+            }
+        } catch (ServiceSpecificException | RemoteException e) {
+            mLog.e("Failed to add " + mIfaceName + " to local table: ", e);
+            return;
+        }
+
+        for (RouteInfo route : toBeAdded) mLinkProperties.addRoute(route);
+    }
+
     private void configureLocalIPv6Routes(
             HashSet<IpPrefix> deprecatedPrefixes, HashSet<IpPrefix> newPrefixes) {
         // [1] Remove the routes that are deprecated.
         if (!deprecatedPrefixes.isEmpty()) {
-            final ArrayList<RouteInfo> toBeRemoved =
-                    getLocalRoutesFor(mIfaceName, deprecatedPrefixes);
-            // Remove routes from local network.
-            final int removalFailures = RouteUtils.removeRoutesFromLocalNetwork(
-                    mNetd, toBeRemoved);
-            if (removalFailures > 0) {
-                mLog.e(String.format("Failed to remove %d IPv6 routes from local table.",
-                        removalFailures));
-            }
-
-            for (RouteInfo route : toBeRemoved) mLinkProperties.removeRoute(route);
+            removeRoutesFromLocalNetwork(getLocalRoutesFor(mIfaceName, deprecatedPrefixes));
         }
 
         // [2] Add only the routes that have not previously been added.
@@ -792,24 +814,7 @@ public class IpServer extends StateMachine {
             }
 
             if (!addedPrefixes.isEmpty()) {
-                final ArrayList<RouteInfo> toBeAdded =
-                        getLocalRoutesFor(mIfaceName, addedPrefixes);
-                try {
-                    // It's safe to call networkAddInterface() even if
-                    // the interface is already in the local_network.
-                    mNetd.networkAddInterface(INetd.LOCAL_NET_ID, mIfaceName);
-                    try {
-                        // Add routes from local network. Note that adding routes that
-                        // already exist does not cause an error (EEXIST is silently ignored).
-                        RouteUtils.addRoutesToLocalNetwork(mNetd, mIfaceName, toBeAdded);
-                    } catch (IllegalStateException e) {
-                        mLog.e("Failed to add IPv6 routes to local table: " + e);
-                    }
-                } catch (ServiceSpecificException | RemoteException e) {
-                    mLog.e("Failed to add " + mIfaceName + " to local table: ", e);
-                }
-
-                for (RouteInfo route : toBeAdded) mLinkProperties.addRoute(route);
+                addRoutesToLocalNetwork(getLocalRoutesFor(mIfaceName, addedPrefixes));
             }
         }
     }
@@ -951,12 +956,72 @@ public class IpServer extends StateMachine {
         }
     }
 
-    private byte getHopLimit(String upstreamIface) {
+    private void handleNewPrefixRequest(@NonNull final IpPrefix currentPrefix) {
+        if (!currentPrefix.contains(mIpv4Address.getAddress())
+                || currentPrefix.getPrefixLength() != mIpv4Address.getPrefixLength()) {
+            Log.e(TAG, "Invalid prefix: " + currentPrefix);
+            return;
+        }
+
+        final LinkAddress deprecatedLinkAddress = mIpv4Address;
+        mIpv4Address = requestIpv4Address();
+        if (mIpv4Address == null) {
+            mLog.e("Fail to request a new downstream prefix");
+            return;
+        }
+        final Inet4Address srvAddr = (Inet4Address) mIpv4Address.getAddress();
+
+        // Add new IPv4 address on the interface.
+        if (!mInterfaceCtrl.addAddress(srvAddr, currentPrefix.getPrefixLength())) {
+            mLog.e("Failed to add new IP " + srvAddr);
+            return;
+        }
+
+        // Remove deprecated routes from local network.
+        removeRoutesFromLocalNetwork(
+                Collections.singletonList(getDirectConnectedRoute(deprecatedLinkAddress)));
+        mLinkProperties.removeLinkAddress(deprecatedLinkAddress);
+
+        // Add new routes to local network.
+        addRoutesToLocalNetwork(
+                Collections.singletonList(getDirectConnectedRoute(mIpv4Address)));
+        mLinkProperties.addLinkAddress(mIpv4Address);
+
+        // Update local DNS caching server with new IPv4 address, otherwise, dnsmasq doesn't
+        // listen on the interface configured with new IPv4 address, that results DNS validation
+        // failure of downstream client even if appropriate routes have been configured.
+        try {
+            mNetd.tetherApplyDnsInterfaces();
+        } catch (ServiceSpecificException | RemoteException e) {
+            mLog.e("Failed to update local DNS caching server");
+            return;
+        }
+        sendLinkProperties();
+
+        // Notify DHCP server that new prefix/route has been applied on IpServer.
+        final Inet4Address clientAddr = mStaticIpv4ClientAddr == null ? null :
+                (Inet4Address) mStaticIpv4ClientAddr.getAddress();
+        final DhcpServingParamsParcel params = makeServingParams(srvAddr /* defaultRouter */,
+                srvAddr /* dnsServer */, mIpv4Address /* serverLinkAddress */, clientAddr);
+        try {
+            mDhcpServer.updateParams(params, new OnHandlerStatusCallback() {
+                    @Override
+                    public void callback(int statusCode) {
+                        if (statusCode != STATUS_SUCCESS) {
+                            mLog.e("Error updating DHCP serving params: " + statusCode);
+                        }
+                    }
+            });
+        } catch (RemoteException e) {
+            mLog.e("Error updating DHCP serving params", e);
+        }
+    }
+
+    private byte getHopLimit(String upstreamIface, int adjustTTL) {
         try {
             int upstreamHopLimit = Integer.parseUnsignedInt(
                     mNetd.getProcSysNet(INetd.IPV6, INetd.CONF, upstreamIface, "hop_limit"));
-            // Add one hop to account for this forwarding device
-            upstreamHopLimit++;
+            upstreamHopLimit = upstreamHopLimit + adjustTTL;
             // Cap the hop limit to 255.
             return (byte) Integer.min(upstreamHopLimit, 255);
         } catch (Exception e) {
@@ -1044,7 +1109,7 @@ public class IpServer extends StateMachine {
                     transitionTo(mUnavailableState);
                     break;
                 case CMD_IPV6_TETHER_UPDATE:
-                    updateUpstreamIPv6LinkProperties((LinkProperties) message.obj);
+                    updateUpstreamIPv6LinkProperties((LinkProperties) message.obj, message.arg1);
                     break;
                 default:
                     return NOT_HANDLED;
@@ -1062,11 +1127,9 @@ public class IpServer extends StateMachine {
             }
 
             try {
-                final IpPrefix ipv4Prefix = new IpPrefix(mIpv4Address.getAddress(),
-                        mIpv4Address.getPrefixLength());
-                NetdUtils.tetherInterface(mNetd, mIfaceName, ipv4Prefix);
+                NetdUtils.tetherInterface(mNetd, mIfaceName, asIpPrefix(mIpv4Address));
             } catch (RemoteException | ServiceSpecificException | IllegalStateException e) {
-                mLog.e("Error Tethering: " + e);
+                mLog.e("Error Tethering", e);
                 mLastError = TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR;
                 return;
             }
@@ -1110,7 +1173,7 @@ public class IpServer extends StateMachine {
                     if (DBG) Log.d(TAG, "Untethered (ifdown)" + mIfaceName);
                     break;
                 case CMD_IPV6_TETHER_UPDATE:
-                    updateUpstreamIPv6LinkProperties((LinkProperties) message.obj);
+                    updateUpstreamIPv6LinkProperties((LinkProperties) message.obj, message.arg1);
                     sendLinkProperties();
                     break;
                 case CMD_IP_FORWARDING_ENABLE_ERROR:
@@ -1120,6 +1183,14 @@ public class IpServer extends StateMachine {
                 case CMD_SET_DNS_FORWARDERS_ERROR:
                     mLastError = TetheringManager.TETHER_ERROR_INTERNAL_ERROR;
                     transitionTo(mInitialState);
+                    break;
+                case CMD_NEW_PREFIX_REQUEST:
+                    handleNewPrefixRequest((IpPrefix) message.obj);
+                    break;
+                case CMD_NOTIFY_PREFIX_CONFLICT:
+                    mLog.i("restart tethering: " + mInterfaceType);
+                    mCallback.requestEnableTethering(mInterfaceType, false /* enabled */);
+                    transitionTo(mWaitingForRestartState);
                     break;
                 default:
                     return false;
@@ -1299,6 +1370,28 @@ public class IpServer extends StateMachine {
         public void enter() {
             mLastError = TetheringManager.TETHER_ERROR_NO_ERROR;
             sendInterfaceState(STATE_UNAVAILABLE);
+        }
+    }
+
+    class WaitingForRestartState extends State {
+        @Override
+        public boolean processMessage(Message message) {
+            logMessage(this, message.what);
+            switch (message.what) {
+                case CMD_TETHER_UNREQUESTED:
+                    transitionTo(mInitialState);
+                    mLog.i("Untethered (unrequested) and restarting " + mIfaceName);
+                    mCallback.requestEnableTethering(mInterfaceType, true /* enabled */);
+                    break;
+                case CMD_INTERFACE_DOWN:
+                    transitionTo(mUnavailableState);
+                    mLog.i("Untethered (interface down) and restarting" + mIfaceName);
+                    mCallback.requestEnableTethering(mInterfaceType, true /* enabled */);
+                    break;
+                default:
+                    return false;
+            }
+            return true;
         }
     }
 

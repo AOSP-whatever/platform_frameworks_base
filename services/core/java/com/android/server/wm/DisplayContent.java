@@ -99,6 +99,7 @@ import static com.android.server.wm.DisplayContentProto.WINDOW_CONTAINER;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_APP_TRANSITIONS;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_FOCUS;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_FOCUS_LIGHT;
+import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_IME;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_ORIENTATION;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_SCREEN_ON;
 import static com.android.server.wm.ProtoLogGroup.WM_SHOW_TRANSACTIONS;
@@ -493,12 +494,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
      * The launching activity which is using fixed rotation transformation.
      *
      * @see #handleTopActivityLaunchingInDifferentOrientation
-     * @see #setFixedRotationLaunchingApp
+     * @see #setFixedRotationLaunchingApp(ActivityRecord, int)
      * @see DisplayRotation#shouldRotateSeamlessly
      */
-    ActivityRecord mFixedRotationLaunchingApp;
+    private ActivityRecord mFixedRotationLaunchingApp;
 
-    FixedRotationAnimationController mFixedRotationAnimationController;
+    private FixedRotationAnimationController mFixedRotationAnimationController;
 
     final FixedRotationTransitionListener mFixedRotationTransitionListener =
             new FixedRotationTransitionListener();
@@ -626,6 +627,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     // Used in performing layout
     private boolean mTmpWindowsBehindIme;
+
+    /**
+     * Used to prevent recursions when calling
+     * {@link #ensureActivitiesVisible(ActivityRecord, int, boolean, boolean)}
+     */
+    private boolean mInEnsureActivitiesVisible = false;
 
     private final Consumer<WindowState> mUpdateWindowsForAnimator = w -> {
         WindowStateAnimator winAnimator = w.mWinAnimator;
@@ -1102,12 +1109,14 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     }
 
     void removeShellRoot(int windowType) {
-        ShellRoot root = mShellRoots.get(windowType);
-        if (root == null) {
-            return;
+        synchronized(mWmService.mGlobalLock) {
+            ShellRoot root = mShellRoots.get(windowType);
+            if (root == null) {
+                return;
+            }
+            root.clear();
+            mShellRoots.remove(windowType);
         }
-        root.clear();
-        mShellRoots.remove(windowType);
     }
 
     void setRemoteInsetsController(IDisplayWindowInsetsController controller) {
@@ -1477,12 +1486,52 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         return true;
     }
 
+    /** Returns {@code true} if the top activity is transformed with the new rotation of display. */
+    boolean hasTopFixedRotationLaunchingApp() {
+        return mFixedRotationLaunchingApp != null
+                // Ignore animating recents because it hasn't really become the top.
+                && mFixedRotationLaunchingApp != mFixedRotationTransitionListener.mAnimatingRecents;
+    }
+
+    @VisibleForTesting
+    boolean isFixedRotationLaunchingApp(ActivityRecord r) {
+        return mFixedRotationLaunchingApp == r;
+    }
+
+    @VisibleForTesting
+    @Nullable FixedRotationAnimationController getFixedRotationAnimationController() {
+        return mFixedRotationAnimationController;
+    }
+
+    void setFixedRotationLaunchingAppUnchecked(@Nullable ActivityRecord r) {
+        setFixedRotationLaunchingAppUnchecked(r, ROTATION_UNDEFINED);
+    }
+
+    void setFixedRotationLaunchingAppUnchecked(@Nullable ActivityRecord r, int rotation) {
+        if (mFixedRotationLaunchingApp == null && r != null) {
+            mWmService.mDisplayNotificationController.dispatchFixedRotationStarted(this, rotation);
+            if (mFixedRotationAnimationController == null) {
+                mFixedRotationAnimationController = new FixedRotationAnimationController(this);
+                mFixedRotationAnimationController.hide();
+            }
+        } else if (mFixedRotationLaunchingApp != null && r == null) {
+            mWmService.mDisplayNotificationController.dispatchFixedRotationFinished(this);
+            finishFixedRotationAnimationIfPossible();
+        }
+        mFixedRotationLaunchingApp = r;
+    }
+
     /**
      * Sets the provided record to {@link mFixedRotationLaunchingApp} if possible to apply fixed
      * rotation transform to it and indicate that the display may be rotated after it is launched.
      */
     void setFixedRotationLaunchingApp(@NonNull ActivityRecord r, @Surface.Rotation int rotation) {
         final WindowToken prevRotatedLaunchingApp = mFixedRotationLaunchingApp;
+        if (prevRotatedLaunchingApp != null && prevRotatedLaunchingApp == r
+                && r.getWindowConfiguration().getRotation() == rotation) {
+            // The given launching app and target rotation are the same as the existing ones.
+            return;
+        }
         if (prevRotatedLaunchingApp != null
                 && prevRotatedLaunchingApp.getWindowConfiguration().getRotation() == rotation
                 // It is animating so we can expect there will have a transition callback.
@@ -1492,13 +1541,14 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             // the heavy operations. This also benefits that the states of multiple activities
             // are handled together.
             r.linkFixedRotationTransform(prevRotatedLaunchingApp);
+            setFixedRotationLaunchingAppUnchecked(r, rotation);
             return;
         }
 
         if (!r.hasFixedRotationTransform()) {
             startFixedRotationTransform(r, rotation);
         }
-        mFixedRotationLaunchingApp = r;
+        setFixedRotationLaunchingAppUnchecked(r, rotation);
         if (prevRotatedLaunchingApp != null) {
             prevRotatedLaunchingApp.finishFixedRotationTransform();
         }
@@ -1526,7 +1576,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     }
 
     /**
-     * Clears the {@link mFixedRotationLaunchingApp} without applying rotation to display. It is
+     * Clears the {@link #mFixedRotationLaunchingApp} without applying rotation to display. It is
      * used when the display won't rotate (e.g. the orientation from sensor has updated again before
      * applying rotation to display) but the launching app has been transformed. So the record need
      * to be cleared and restored to stop using seamless rotation and rotated configuration.
@@ -1536,15 +1586,10 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             return;
         }
         mFixedRotationLaunchingApp.finishFixedRotationTransform();
-        mFixedRotationLaunchingApp = null;
+        setFixedRotationLaunchingAppUnchecked(null);
     }
 
     private void startFixedRotationTransform(WindowToken token, int rotation) {
-        if (mFixedRotationAnimationController == null) {
-            mFixedRotationAnimationController = new FixedRotationAnimationController(
-                    this);
-        }
-        mFixedRotationAnimationController.hide(rotation);
         mTmpConfiguration.unset();
         final DisplayInfo info = computeScreenConfiguration(mTmpConfiguration, rotation);
         final WmDisplayCutout cutout = calculateDisplayCutoutForRotation(rotation);
@@ -1566,9 +1611,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         }
     }
 
-    void finishFixedRotationAnimation() {
-        if (mFixedRotationAnimationController != null
-                && mFixedRotationAnimationController.show()) {
+    /** Re-show the previously hidden windows if all seamless rotated windows are done. */
+    void finishFixedRotationAnimationIfPossible() {
+        final FixedRotationAnimationController controller = mFixedRotationAnimationController;
+        if (controller != null && !mDisplayRotation.hasSeamlessRotatingWindow()) {
+            controller.show();
             mFixedRotationAnimationController = null;
         }
     }
@@ -3485,7 +3532,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         if (target == mInputMethodTarget && mInputMethodTargetWaitingAnim == targetWaitingAnim) {
             return;
         }
-
+        ProtoLog.i(WM_DEBUG_IME, "setInputMethodTarget %s", target);
         mInputMethodTarget = target;
         mInputMethodTargetWaitingAnim = targetWaitingAnim;
         assignWindowLayers(true /* setLayoutNeeded */);
@@ -3499,6 +3546,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
      */
     void setInputMethodInputTarget(WindowState target) {
         if (mInputMethodInputTarget != target) {
+            ProtoLog.i(WM_DEBUG_IME, "setInputMethodInputTarget %s", target);
             mInputMethodInputTarget = target;
             updateImeControlTarget();
         }
@@ -4700,9 +4748,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     boolean supportsSystemDecorations() {
         return (mWmService.mDisplayWindowSettings.shouldShowSystemDecorsLocked(this)
                 || (mDisplay.getFlags() & FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS) != 0
-                || (mWmService.mForceDesktopModeOnExternalDisplays && !isUntrustedVirtualDisplay()))
+                || mWmService.mForceDesktopModeOnExternalDisplays)
                 // VR virtual display will be used to run and render 2D app within a VR experience.
-                && mDisplayId != mWmService.mVr2dDisplayId;
+                && mDisplayId != mWmService.mVr2dDisplayId
+                // Do not show system decorations on untrusted virtual display.
+                && !isUntrustedVirtualDisplay();
     }
 
     /**
@@ -5272,7 +5322,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         rotatedLaunchingApp.finishFixedRotationTransform(
                 () -> applyRotation(oldRotation, newRotation));
-        mFixedRotationLaunchingApp = null;
+        setFixedRotationLaunchingAppUnchecked(null);
     }
 
     /** Checks whether the given activity is in size compatibility mode and notifies the change. */
@@ -5437,9 +5487,18 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     void ensureActivitiesVisible(ActivityRecord starting, int configChanges,
             boolean preserveWindows, boolean notifyClients) {
-        for (int i = getTaskDisplayAreaCount() - 1; i >= 0; --i) {
-            getTaskDisplayAreaAt(i).ensureActivitiesVisible(starting, configChanges,
-                    preserveWindows, notifyClients);
+        if (mInEnsureActivitiesVisible) {
+            // Don't do recursive work.
+            return;
+        }
+        mInEnsureActivitiesVisible = true;
+        try {
+            for (int i = getTaskDisplayAreaCount() - 1; i >= 0; --i) {
+                getTaskDisplayAreaAt(i).ensureActivitiesVisible(starting, configChanges,
+                        preserveWindows, notifyClients);
+            }
+        } finally {
+            mInEnsureActivitiesVisible = false;
         }
     }
 
@@ -5586,7 +5645,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             if (animatingRecents != null && animatingRecents == mFixedRotationLaunchingApp) {
                 // Because it won't affect display orientation, just finish the transform.
                 animatingRecents.finishFixedRotationTransform();
-                mFixedRotationLaunchingApp = null;
+                setFixedRotationLaunchingAppUnchecked(null);
             } else {
                 // If there is already a launching activity that is not the recents, before its
                 // transition is completed, the recents animation may be started. So if the recents

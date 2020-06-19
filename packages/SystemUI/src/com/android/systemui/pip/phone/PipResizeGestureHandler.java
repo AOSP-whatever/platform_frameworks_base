@@ -32,12 +32,12 @@ import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DeviceConfig;
-import android.util.DisplayMetrics;
 import android.view.InputChannel;
 import android.view.InputEvent;
 import android.view.InputEventReceiver;
 import android.view.InputMonitor;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 
 import com.android.internal.policy.TaskResizingAlgorithm;
 import com.android.systemui.R;
@@ -56,7 +56,7 @@ public class PipResizeGestureHandler {
 
     private static final String TAG = "PipResizeGestureHandler";
 
-    private final DisplayMetrics mDisplayMetrics = new DisplayMetrics();
+    private final Context mContext;
     private final PipBoundsHandler mPipBoundsHandler;
     private final PipMotionHelper mMotionHelper;
     private final int mDisplayId;
@@ -74,14 +74,16 @@ public class PipResizeGestureHandler {
     private final Rect mTmpBottomLeftCorner = new Rect();
     private final Rect mTmpBottomRightCorner = new Rect();
     private final Rect mDisplayBounds = new Rect();
-    private final int mDelta;
     private final Supplier<Rect> mMovementBoundsSupplier;
     private final Runnable mUpdateMovementBoundsRunnable;
 
+    private int mDelta;
+    private float mTouchSlop;
     private boolean mAllowGesture;
     private boolean mIsAttached;
     private boolean mIsEnabled;
     private boolean mEnableUserResize;
+    private boolean mThresholdCrossed;
 
     private InputMonitor mInputMonitor;
     private InputEventReceiver mInputEventReceiver;
@@ -93,8 +95,7 @@ public class PipResizeGestureHandler {
             PipMotionHelper motionHelper, DeviceConfigProxy deviceConfig,
             PipTaskOrganizer pipTaskOrganizer, Supplier<Rect> movementBoundsSupplier,
             Runnable updateMovementBoundsRunnable) {
-        final Resources res = context.getResources();
-        context.getDisplay().getMetrics(mDisplayMetrics);
+        mContext = context;
         mDisplayId = context.getDisplayId();
         mMainExecutor = context.getMainExecutor();
         mPipBoundsHandler = pipBoundsHandler;
@@ -104,7 +105,7 @@ public class PipResizeGestureHandler {
         mUpdateMovementBoundsRunnable = updateMovementBoundsRunnable;
 
         context.getDisplay().getRealSize(mMaxSize);
-        mDelta = res.getDimensionPixelSize(R.dimen.pip_resize_edge_size);
+        reloadResources();
 
         mEnableUserResize = DeviceConfig.getBoolean(
                 DeviceConfig.NAMESPACE_SYSTEMUI,
@@ -120,6 +121,16 @@ public class PipResizeGestureHandler {
                         }
                     }
                 });
+    }
+
+    public void onConfigurationChanged() {
+        reloadResources();
+    }
+
+    private void reloadResources() {
+        final Resources res = mContext.getResources();
+        mDelta = res.getDimensionPixelSize(R.dimen.pip_resize_edge_size);
+        mTouchSlop = ViewConfiguration.get(mContext).getScaledTouchSlop();
     }
 
     private void resetDragCorners() {
@@ -264,7 +275,12 @@ public class PipResizeGestureHandler {
                     break;
                 case MotionEvent.ACTION_MOVE:
                     // Capture inputs
-                    mInputMonitor.pilferPointers();
+                    float dx = Math.abs(ev.getX() - mDownPoint.x);
+                    float dy = Math.abs(ev.getY() - mDownPoint.y);
+                    if (!mThresholdCrossed && dx > mTouchSlop && dy > mTouchSlop) {
+                        mThresholdCrossed = true;
+                        mInputMonitor.pilferPointers();
+                    }
                     final Rect currentPipBounds = mMotionHelper.getBounds();
                     mLastResizeBounds.set(TaskResizingAlgorithm.resizeDrag(ev.getX(), ev.getY(),
                             mDownPoint.x, mDownPoint.y, currentPipBounds, mCtrlType, mMinSize.x,
@@ -282,6 +298,7 @@ public class PipResizeGestureHandler {
                             mUpdateMovementBoundsRunnable.run();
                             mCtrlType = CTRL_NONE;
                             mAllowGesture = false;
+                            mThresholdCrossed = false;
                         });
                     });
                     break;

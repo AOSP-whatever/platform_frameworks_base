@@ -158,6 +158,7 @@ import com.android.server.am.ActivityManagerService;
 import com.android.server.am.ActivityManagerService.ItemMatcher;
 import android.util.BoostFramework;
 import com.android.server.am.AppTimeTracker;
+import com.android.server.uri.NeededUriGrants;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -390,6 +391,7 @@ public class ActivityStack extends Task {
             return mBehindFullscreenActivity;
         }
 
+        /** Returns {@code true} to stop the outer loop and indicate the result is computed. */
         private boolean processActivity(ActivityRecord r, ActivityRecord topActivity) {
             if (mAboveTop) {
                 if (r == topActivity) {
@@ -405,7 +407,10 @@ public class ActivityStack extends Task {
             }
 
             if (mHandlingOccluded) {
-                mHandleBehindFullscreenActivity.accept(r);
+                // Iterating through all occluded activities.
+                if (mBehindFullscreenActivity) {
+                    mHandleBehindFullscreenActivity.accept(r);
+                }
             } else if (r == mToCheck) {
                 return true;
             } else if (mBehindFullscreenActivity) {
@@ -947,19 +952,7 @@ public class ActivityStack extends Task {
         // task's ordering. However, we still need to move 'task' to back. The intention is that
         // this ends up behind the home-task so that it is made invisible; so, if the home task
         // is not a child of this, reparent 'task' to the back of the home task's actual parent.
-        final ActivityStack home = displayArea.getOrCreateRootHomeTask();
-        final WindowContainer homeParent = home.getParent();
-        final Task homeParentTask = homeParent != null ? homeParent.asTask() : null;
-        if (homeParentTask == null) {
-            ((ActivityStack) task).reparent(displayArea, false /* onTop */);
-        } else if (homeParentTask == this) {
-            // Apparently reparent early-outs if same stack, so we have to explicitly reorder.
-            positionChildAtBottom(task);
-        } else {
-            task.reparent((ActivityStack) homeParentTask, false /* toTop */,
-                    REPARENT_LEAVE_STACK_IN_PLACE, false /* animate */, false /* deferResume */,
-                    "moveToBack");
-        }
+        displayArea.positionTaskBehindHome((ActivityStack) task);
     }
 
     // TODO: Should each user have there own stacks?
@@ -1324,8 +1317,17 @@ public class ActivityStack extends Task {
     /**
      * Make sure that all activities that need to be visible in the stack (that is, they
      * currently can be seen by the user) actually are and update their configuration.
+     * @param starting The top most activity in the task.
+     *                 The activity is either starting or resuming.
+     *                 Caller should ensure starting activity is visible.
+     * @param preserveWindows Flag indicating whether windows should be preserved when updating
+     *                        configuration in {@link mEnsureActivitiesVisibleHelper}.
+     * @param configChanges Parts of the configuration that changed for this activity for evaluating
+     *                      if the screen should be frozen as part of
+     *                      {@link mEnsureActivitiesVisibleHelper}.
+     *
      */
-    void ensureActivitiesVisible(ActivityRecord starting, int configChanges,
+    void ensureActivitiesVisible(@Nullable ActivityRecord starting, int configChanges,
             boolean preserveWindows) {
         ensureActivitiesVisible(starting, configChanges, preserveWindows, true /* notifyClients */);
     }
@@ -1334,9 +1336,19 @@ public class ActivityStack extends Task {
      * Ensure visibility with an option to also update the configuration of visible activities.
      * @see #ensureActivitiesVisible(ActivityRecord, int, boolean)
      * @see RootWindowContainer#ensureActivitiesVisible(ActivityRecord, int, boolean)
+     * @param starting The top most activity in the task.
+     *                 The activity is either starting or resuming.
+     *                 Caller should ensure starting activity is visible.
+     * @param notifyClients Flag indicating whether the visibility updates should be sent to the
+     *                      clients in {@link mEnsureActivitiesVisibleHelper}.
+     * @param preserveWindows Flag indicating whether windows should be preserved when updating
+     *                        configuration in {@link mEnsureActivitiesVisibleHelper}.
+     * @param configChanges Parts of the configuration that changed for this activity for evaluating
+     *                      if the screen should be frozen as part of
+     *                      {@link mEnsureActivitiesVisibleHelper}.
      */
     // TODO: Should be re-worked based on the fact that each task as a stack in most cases.
-    void ensureActivitiesVisible(ActivityRecord starting, int configChanges,
+    void ensureActivitiesVisible(@Nullable ActivityRecord starting, int configChanges,
             boolean preserveWindows, boolean notifyClients) {
         mTopActivityOccludesKeyguard = false;
         mTopDismissingKeyguardActivity = null;
@@ -2167,7 +2179,7 @@ public class ActivityStack extends Task {
                 // window manager to keep the previous window it had previously
                 // created, if it still had one.
                 Task prevTask = r.getTask();
-                ActivityRecord prev = prevTask.topRunningActivityWithStartingWindowLocked();
+                ActivityRecord prev = prevTask.topActivityWithStartingWindow();
                 if (prev != null) {
                     // We don't want to reuse the previous starting preview if:
                     // (1) The current activity is in a different task.
@@ -2392,8 +2404,8 @@ public class ActivityStack extends Task {
         return false;
     }
 
-    boolean navigateUpTo(ActivityRecord srec, Intent destIntent, int resultCode,
-            Intent resultData) {
+    boolean navigateUpTo(ActivityRecord srec, Intent destIntent, NeededUriGrants destGrants,
+            int resultCode, Intent resultData, NeededUriGrants resultGrants) {
         if (!srec.attachedToProcess()) {
             // Nothing to do if the caller is not attached, because this method should be called
             // from an alive activity.
@@ -2444,12 +2456,14 @@ public class ActivityStack extends Task {
         resultCodeHolder[0] = resultCode;
         final Intent[] resultDataHolder = new Intent[1];
         resultDataHolder[0] = resultData;
+        final NeededUriGrants[] resultGrantsHolder = new NeededUriGrants[1];
+        resultGrantsHolder[0] = resultGrants;
         final ActivityRecord finalParent = parent;
         task.forAllActivities((ar) -> {
             if (ar == finalParent) return true;
 
-            ar.finishIfPossible(
-                    resultCodeHolder[0], resultDataHolder[0], "navigate-up", true /* oomAdj */);
+            ar.finishIfPossible(resultCodeHolder[0], resultDataHolder[0], resultGrantsHolder[0],
+                    "navigate-up", true /* oomAdj */);
             // Only return the supplied result for the first activity finished
             resultCodeHolder[0] = Activity.RESULT_CANCELED;
             resultDataHolder[0] = null;
@@ -2466,7 +2480,7 @@ public class ActivityStack extends Task {
                     parentLaunchMode == ActivityInfo.LAUNCH_SINGLE_TASK ||
                     parentLaunchMode == ActivityInfo.LAUNCH_SINGLE_TOP ||
                     (destIntentFlags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0) {
-                parent.deliverNewIntentLocked(callingUid, destIntent, srec.packageName);
+                parent.deliverNewIntentLocked(callingUid, destIntent, destGrants, srec.packageName);
             } else {
                 try {
                     ActivityInfo aInfo = AppGlobals.getPackageManager().getActivityInfo(
@@ -2490,7 +2504,8 @@ public class ActivityStack extends Task {
                 } catch (RemoteException e) {
                     foundParentInTask = false;
                 }
-                parent.finishIfPossible(resultCode, resultData, "navigate-top", true /* oomAdj */);
+                parent.finishIfPossible(resultCode, resultData, resultGrants,
+                        "navigate-top", true /* oomAdj */);
             }
         }
         Binder.restoreCallingIdentity(origId);
@@ -2665,6 +2680,9 @@ public class ActivityStack extends Task {
             mRootWindowContainer.ensureVisibilityAndConfig(null /* starting */,
                     getDisplay().mDisplayId, false /* markFrozenIfConfigChanged */,
                     false /* deferResume */);
+            // Usually resuming a top activity triggers the next app transition, but nothing's got
+            // resumed in this case, so we need to execute it explicitly.
+            getDisplay().mDisplayContent.executeAppTransition();
         } else {
             mRootWindowContainer.resumeFocusedStacksTopActivities();
         }
@@ -2735,7 +2753,9 @@ public class ActivityStack extends Task {
      */
     @Nullable
     private ActivityRecord getOccludingActivityAbove(ActivityRecord activity) {
-        return getActivity((ar) -> ar.occludesParent(), true /* traverseTopToBottom */, activity);
+        ActivityRecord top = getActivity((ar) -> ar.occludesParent(),
+                true /* traverseTopToBottom */, activity);
+        return top != activity ? top : null;
     }
 
     boolean willActivityBeVisible(IBinder token) {
@@ -3247,7 +3267,7 @@ public class ActivityStack extends Task {
     }
 
     private void updateSurfaceBounds() {
-        updateSurfaceSize(getPendingTransaction());
+        updateSurfaceSize(getSyncTransaction());
         updateSurfacePosition();
         scheduleAnimation();
     }

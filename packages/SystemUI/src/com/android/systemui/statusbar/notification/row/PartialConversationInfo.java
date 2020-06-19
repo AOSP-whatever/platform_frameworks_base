@@ -192,9 +192,9 @@ public class PartialConversationInfo extends LinearLayout implements
     private void bindName() {
         TextView name = findViewById(R.id.name);
         Bundle extras = mSbn.getNotification().extras;
-        String nameString = extras.getString(Notification.EXTRA_CONVERSATION_TITLE);
+        CharSequence nameString = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE, "");
         if (TextUtils.isEmpty(nameString)) {
-            nameString = extras.getString(Notification.EXTRA_TITLE);
+            nameString = extras.getCharSequence(Notification.EXTRA_TITLE, "");
         }
         name.setText(nameString);
     }
@@ -298,6 +298,11 @@ public class PartialConversationInfo extends LinearLayout implements
     @Override
     public void onFinishedClosing() {
         // TODO: do we need to do anything here?
+    }
+
+    @Override
+    public boolean needsFalsingProtection() {
+        return true;
     }
 
     @Override

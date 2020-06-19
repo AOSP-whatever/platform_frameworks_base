@@ -169,7 +169,6 @@ AtomMatcher CreateScreenStateChangedAtomMatcher(
     return atom_matcher;
 }
 
-
 AtomMatcher CreateScreenTurnedOnAtomMatcher() {
     return CreateScreenStateChangedAtomMatcher("ScreenTurnedOn",
             android::view::DisplayStateEnum::DISPLAY_STATE_ON);
@@ -335,22 +334,46 @@ State CreateScreenStateWithOnOffMap(int64_t screenOnId, int64_t screenOffId) {
     return state;
 }
 
+State CreateScreenStateWithSimpleOnOffMap(int64_t screenOnId, int64_t screenOffId) {
+    State state;
+    state.set_id(StringToId("ScreenStateSimpleOnOff"));
+    state.set_atom_id(util::SCREEN_STATE_CHANGED);
+
+    auto map = CreateScreenStateSimpleOnOffMap(screenOnId, screenOffId);
+    *state.mutable_map() = map;
+
+    return state;
+}
+
 StateMap_StateGroup CreateScreenStateOnGroup(int64_t screenOnId) {
     StateMap_StateGroup group;
     group.set_group_id(screenOnId);
-    group.add_value(2);
-    group.add_value(5);
-    group.add_value(6);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_VR);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_ON_SUSPEND);
     return group;
 }
 
 StateMap_StateGroup CreateScreenStateOffGroup(int64_t screenOffId) {
     StateMap_StateGroup group;
     group.set_group_id(screenOffId);
-    group.add_value(0);
-    group.add_value(1);
-    group.add_value(3);
-    group.add_value(4);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_DOZE);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_DOZE_SUSPEND);
+    return group;
+}
+
+StateMap_StateGroup CreateScreenStateSimpleOnGroup(int64_t screenOnId) {
+    StateMap_StateGroup group;
+    group.set_group_id(screenOnId);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+    return group;
+}
+
+StateMap_StateGroup CreateScreenStateSimpleOffGroup(int64_t screenOffId) {
+    StateMap_StateGroup group;
+    group.set_group_id(screenOffId);
+    group.add_value(android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
     return group;
 }
 
@@ -358,6 +381,13 @@ StateMap CreateScreenStateOnOffMap(int64_t screenOnId, int64_t screenOffId) {
     StateMap map;
     *map.add_group() = CreateScreenStateOnGroup(screenOnId);
     *map.add_group() = CreateScreenStateOffGroup(screenOffId);
+    return map;
+}
+
+StateMap CreateScreenStateSimpleOnOffMap(int64_t screenOnId, int64_t screenOffId) {
+    StateMap map;
+    *map.add_group() = CreateScreenStateSimpleOnGroup(screenOnId);
+    *map.add_group() = CreateScreenStateSimpleOffGroup(screenOffId);
     return map;
 }
 
@@ -605,8 +635,17 @@ sp<MockUidMap> makeMockUidMapForOneHost(int hostUid, const vector<int>& isolated
     return uidMap;
 }
 
-std::unique_ptr<LogEvent> CreateScreenStateChangedEvent(
-        uint64_t timestampNs, const android::view::DisplayStateEnum state) {
+sp<MockUidMap> makeMockUidMapForPackage(const string& pkg, const set<int32_t>& uids) {
+    sp<MockUidMap> uidMap = new StrictMock<MockUidMap>();
+    EXPECT_CALL(*uidMap, getAppUid(_)).Times(AnyNumber());
+    EXPECT_CALL(*uidMap, getAppUid(pkg)).WillRepeatedly(Return(uids));
+
+    return uidMap;
+}
+
+std::unique_ptr<LogEvent> CreateScreenStateChangedEvent(uint64_t timestampNs,
+                                                        const android::view::DisplayStateEnum state,
+                                                        int loggerUid) {
     AStatsEvent* statsEvent = AStatsEvent_obtain();
     AStatsEvent_setAtomId(statsEvent, util::SCREEN_STATE_CHANGED);
     AStatsEvent_overwriteTimestamp(statsEvent, timestampNs);
@@ -614,7 +653,7 @@ std::unique_ptr<LogEvent> CreateScreenStateChangedEvent(
     AStatsEvent_addBoolAnnotation(statsEvent, util::ANNOTATION_ID_EXCLUSIVE_STATE, true);
     AStatsEvent_addBoolAnnotation(statsEvent, util::ANNOTATION_ID_STATE_NESTED, false);
 
-    std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(/*uid=*/0, /*pid=*/0);
+    std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(loggerUid, /*pid=*/0);
     parseStatsEventToLogEvent(statsEvent, logEvent.get());
     return logEvent;
 }

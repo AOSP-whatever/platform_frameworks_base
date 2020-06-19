@@ -71,6 +71,7 @@ import java.util.Set;
  */
 public class NotificationInfo extends LinearLayout implements NotificationGuts.GutsContent {
     private static final String TAG = "InfoGuts";
+    private int mActualHeight;
 
     @IntDef(prefix = { "ACTION_" }, value = {
             ACTION_NONE,
@@ -489,6 +490,11 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
     }
 
     @Override
+    public boolean needsFalsingProtection() {
+        return true;
+    }
+
+    @Override
     public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
         super.onInitializeAccessibilityEvent(event);
         if (mGutsContainer != null &&
@@ -583,7 +589,15 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
 
     @Override
     public int getActualHeight() {
-        return getHeight();
+        // Because we're animating the bounds, getHeight will return the small height at the
+        // beginning of the animation. Instead we'd want it to already return the end value
+        return mActualHeight;
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        mActualHeight = getHeight();
     }
 
     @VisibleForTesting

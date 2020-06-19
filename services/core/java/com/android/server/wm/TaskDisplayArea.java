@@ -204,7 +204,7 @@ final class TaskDisplayArea extends DisplayArea<ActivityStack> {
         return mChildren.indexOf(stack);
     }
 
-    ActivityStack getRootHomeTask() {
+    @Nullable ActivityStack getRootHomeTask() {
         return mRootHomeTask;
     }
 
@@ -655,7 +655,7 @@ final class TaskDisplayArea extends DisplayArea<ActivityStack> {
                 mSplitScreenDividerAnchor = makeChildSurface(null)
                         .setName("splitScreenDividerAnchor")
                         .build();
-                getPendingTransaction()
+                getSyncTransaction()
                         .show(mAppAnimationLayer)
                         .show(mBoostedAppAnimationLayer)
                         .show(mHomeAppAnimationLayer)
@@ -772,6 +772,32 @@ final class TaskDisplayArea extends DisplayArea<ActivityStack> {
         }
 
         onStackOrderChanged(stack);
+    }
+
+    /**
+     * Moves/reparents `task` to the back of whatever container the home stack is in. This is for
+     * when we just want to move a task to "the back" vs. a specific place. The primary use-case
+     * is to make sure that moved-to-back apps go into secondary split when in split-screen mode.
+     */
+    void positionTaskBehindHome(ActivityStack task) {
+        final ActivityStack home = getOrCreateRootHomeTask();
+        final WindowContainer homeParent = home.getParent();
+        final Task homeParentTask = homeParent != null ? homeParent.asTask() : null;
+        if (homeParentTask == null) {
+            // reparent throws if parent didn't change...
+            if (task.getParent() == this) {
+                positionStackAtBottom(task);
+            } else {
+                task.reparent(this, false /* onTop */);
+            }
+        } else if (homeParentTask == task.getParent()) {
+            // Apparently reparent early-outs if same stack, so we have to explicitly reorder.
+            ((ActivityStack) homeParentTask).positionChildAtBottom(task);
+        } else {
+            task.reparent((ActivityStack) homeParentTask, false /* toTop */,
+                    Task.REPARENT_LEAVE_STACK_IN_PLACE, false /* animate */,
+                    false /* deferResume */, "positionTaskBehindHome");
+        }
     }
 
     ActivityStack getStack(int rootTaskId) {
@@ -1331,14 +1357,10 @@ final class TaskDisplayArea extends DisplayArea<ActivityStack> {
             return true;
         }
 
-        final int displayWindowingMode = getWindowingMode();
         if (windowingMode == WINDOWING_MODE_SPLIT_SCREEN_PRIMARY
                 || windowingMode == WINDOWING_MODE_SPLIT_SCREEN_SECONDARY) {
             return supportsSplitScreen
-                    && WindowConfiguration.supportSplitScreenWindowingMode(activityType)
-                    // Freeform windows and split-screen windows don't mix well, so prevent
-                    // split windowing modes on freeform displays.
-                    && displayWindowingMode != WINDOWING_MODE_FREEFORM;
+                    && WindowConfiguration.supportSplitScreenWindowingMode(activityType);
         }
 
         if (!supportsFreeform && windowingMode == WINDOWING_MODE_FREEFORM) {
@@ -1517,16 +1539,23 @@ final class TaskDisplayArea extends DisplayArea<ActivityStack> {
         return mChildren.get(index);
     }
 
+    @Nullable
+    ActivityStack getOrCreateRootHomeTask() {
+        return getOrCreateRootHomeTask(false /* onTop */);
+    }
+
     /**
      * Returns the existing home stack or creates and returns a new one if it should exist for the
      * display.
+     * @param onTop Only be used when there is no existing home stack. If true the home stack will
+     *              be created at the top of the display, else at the bottom.
      */
     @Nullable
-    ActivityStack getOrCreateRootHomeTask() {
+    ActivityStack getOrCreateRootHomeTask(boolean onTop) {
         ActivityStack homeTask = getRootHomeTask();
         if (homeTask == null && mDisplayContent.supportsSystemDecorations()
                 && !mDisplayContent.isUntrustedVirtualDisplay()) {
-            homeTask = createStack(WINDOWING_MODE_UNDEFINED, ACTIVITY_TYPE_HOME, false /* onTop */);
+            homeTask = createStack(WINDOWING_MODE_UNDEFINED, ACTIVITY_TYPE_HOME, onTop);
         }
         return homeTask;
     }

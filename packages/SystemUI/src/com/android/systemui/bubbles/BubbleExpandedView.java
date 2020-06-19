@@ -225,8 +225,12 @@ public class BubbleExpandedView extends LinearLayout {
     public BubbleExpandedView(Context context, AttributeSet attrs, int defStyleAttr,
             int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        updateDimensions();
+    }
+
+    void updateDimensions() {
         mDisplaySize = new Point();
-        mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        mWindowManager = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         // Get the real size -- this includes screen decorations (notches, statusbar, navbar).
         mWindowManager.getDefaultDisplay().getRealSize(mDisplaySize);
         Resources res = getResources();
@@ -249,6 +253,7 @@ public class BubbleExpandedView extends LinearLayout {
 
         mPointerDrawable = new ShapeDrawable(TriangleShape.create(
                 mPointerWidth, mPointerHeight, true /* pointUp */));
+        mPointerDrawable.setTint(Color.WHITE);
         mPointerView.setBackground(mPointerDrawable);
         mPointerView.setVisibility(INVISIBLE);
 
@@ -301,19 +306,17 @@ public class BubbleExpandedView extends LinearLayout {
      * if a view has been added or removed from on top of the ActivityView, such as the manage menu.
      */
     void updateObscuredTouchableRegion() {
-        mActivityView.onLocationChanged();
+        if (mActivityView != null) {
+            mActivityView.onLocationChanged();
+        }
     }
 
     void applyThemeAttrs() {
         final TypedArray ta = mContext.obtainStyledAttributes(
-                new int[] {
-                        android.R.attr.colorBackgroundFloating,
-                        android.R.attr.dialogCornerRadius});
-        int bgColor = ta.getColor(0, Color.WHITE);
-        float cornerRadius = ta.getDimensionPixelSize(1, 0);
+                new int[] {android.R.attr.dialogCornerRadius});
+        float cornerRadius = ta.getDimensionPixelSize(0, 0);
         ta.recycle();
 
-        mPointerDrawable.setTint(bgColor);
         if (mActivityView != null && ScreenDecorationsUtils.supportsRoundedCornersOnWindows(
                 mContext.getResources())) {
             mActivityView.setCornerRadius(cornerRadius);

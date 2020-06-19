@@ -77,6 +77,9 @@
     <string name="compat_mode_on" msgid="4963711187149440884">"Zoom per riempire schermo"</string>
     <string name="compat_mode_off" msgid="7682459748279487945">"Estendi per riemp. schermo"</string>
     <string name="global_action_screenshot" msgid="2760267567509131654">"Screenshot"</string>
+    <string name="global_action_lock_message" product="default" msgid="4466026255205186456">"Sblocca il telefono per visualizzare altre opzioni"</string>
+    <string name="global_action_lock_message" product="tablet" msgid="7621167597240332986">"Sblocca il tablet per visualizzare altre opzioni"</string>
+    <string name="global_action_lock_message" product="device" msgid="538790401275363781">"Sblocca il dispositivo per visualizzare altre opzioni"</string>
     <string name="remote_input_image_insertion_text" msgid="4850791636452521123">"è stata inviata un\'immagine"</string>
     <string name="screenshot_saving_ticker" msgid="6519186952674544916">"Salvataggio screenshot..."</string>
     <string name="screenshot_saving_title" msgid="2298349784913287333">"Salvataggio screenshot..."</string>
@@ -511,8 +514,8 @@
     <string name="manage_notifications_text" msgid="6885645344647733116">"Gestisci"</string>
     <string name="manage_notifications_history_text" msgid="57055985396576230">"Cronologia"</string>
     <string name="notification_section_header_incoming" msgid="5295312809341711367">"In arrivo"</string>
-    <string name="notification_section_header_gentle" msgid="3044910806569985386">"Notifiche silenziose"</string>
-    <string name="notification_section_header_alerting" msgid="3168140660646863240">"Notifiche di avviso"</string>
+    <string name="notification_section_header_gentle" msgid="6804099527336337197">"Silenziose"</string>
+    <string name="notification_section_header_alerting" msgid="5581175033680477651">"Notifiche"</string>
     <string name="notification_section_header_conversations" msgid="821834744538345661">"Conversazioni"</string>
     <string name="accessibility_notification_section_header_gentle_clear_all" msgid="6490207897764933919">"Cancella tutte le notifiche silenziose"</string>
     <string name="dnd_suppressing_shade_text" msgid="5588252250634464042">"Notifiche messe in pausa in base alla modalità Non disturbare"</string>
@@ -592,19 +595,21 @@
     <string name="volume_odi_captions_hint_enable" msgid="2073091194012843195">"attiva"</string>
     <string name="volume_odi_captions_hint_disable" msgid="2518846326748183407">"disattiva"</string>
     <string name="accessibility_output_chooser" msgid="7807898688967194183">"Cambia dispositivo di uscita"</string>
-    <string name="screen_pinning_title" msgid="7357611095909618178">"La schermata è fissata"</string>
+    <string name="screen_pinning_title" msgid="9058007390337841305">"L\'app è bloccata"</string>
     <string name="screen_pinning_description" msgid="8699395373875667743">"La schermata rimane visibile finché non viene sganciata. Per sganciarla, tieni premuto Indietro e Panoramica."</string>
     <string name="screen_pinning_description_recents_invisible" msgid="4564466648700390037">"La schermata rimane visibile finché non viene disattivato il blocco su schermo. Per disattivarlo, tocca e tieni premuto Indietro e Home."</string>
     <string name="screen_pinning_description_gestural" msgid="7246323931831232068">"Mantiene la visualizzazione fino allo sblocco. Scorri verso l\'alto e tieni premuto per sbloccare."</string>
     <string name="screen_pinning_description_accessible" msgid="7386449191953535332">"La schermata rimane visibile finché non viene sganciata. Per sganciarla, tieni premuto Panoramica."</string>
     <string name="screen_pinning_description_recents_invisible_accessible" msgid="2857071808674481986">"La schermata rimane visibile finché non viene disattivato il blocco su schermo. Per disattivarlo, tocca e tieni premuto Home."</string>
-    <string name="screen_pinning_toast" msgid="2083944237147005811">"Per disattivare il blocco su schermo, tocca e tieni premuti i pulsanti Indietro e Panoramica"</string>
-    <string name="screen_pinning_toast_recents_invisible" msgid="6343770487795352573">"Per disattivare il blocco su schermo, tocca e tieni premuti i pulsanti Indietro e Home"</string>
-    <string name="screen_pinning_toast_gesture_nav" msgid="2884536903398445645">"Per sbloccare questa schermata, scorri verso l\'alto e tieni premuto"</string>
+    <string name="screen_pinning_exposes_personal_data" msgid="8189852022981524789">"I dati personali potrebbero essere accessibili (ad esempio i contatti e i contenuti delle email)."</string>
+    <string name="screen_pinning_can_open_other_apps" msgid="7529756813231421455">"Un\'app bloccata potrebbe aprire altre app."</string>
+    <string name="screen_pinning_toast" msgid="8177286912533744328">"Per sbloccare questa app, tocca e tieni premuti i pulsanti Indietro e Panoramica"</string>
+    <string name="screen_pinning_toast_recents_invisible" msgid="6850978077443052594">"Per sbloccare questa app, tocca e tieni premuti i pulsanti Indietro e Home"</string>
+    <string name="screen_pinning_toast_gesture_nav" msgid="170699893395336705">"Per sbloccare questa app, scorri verso l\'alto e tieni premuto"</string>
     <string name="screen_pinning_positive" msgid="3285785989665266984">"OK"</string>
     <string name="screen_pinning_negative" msgid="6882816864569211666">"No, grazie"</string>
-    <string name="screen_pinning_start" msgid="5695091877402422575">"Blocco su schermo attivato"</string>
-    <string name="screen_pinning_exit" msgid="5114993350662745840">"Blocco su schermo disattivato"</string>
+    <string name="screen_pinning_start" msgid="7483998671383371313">"App bloccata"</string>
+    <string name="screen_pinning_exit" msgid="4553787518387346893">"App sbloccata"</string>
     <string name="quick_settings_reset_confirmation_title" msgid="463533331480997595">"Nascondere <xliff:g id="TILE_LABEL">%1$s</xliff:g>?"</string>
     <string name="quick_settings_reset_confirmation_message" msgid="2320586180785674186">"Verranno visualizzate di nuovo quando le riattiverai nelle impostazioni."</string>
     <string name="quick_settings_reset_confirmation_button" msgid="3341477479055016776">"Nascondi"</string>
@@ -707,13 +712,14 @@
     <string name="inline_turn_off_notifications" msgid="8543989584403106071">"Disattiva notifiche"</string>
     <string name="inline_keep_showing_app" msgid="4393429060390649757">"Continuare a ricevere notifiche da questa app?"</string>
     <string name="notification_silence_title" msgid="8608090968400832335">"Modalità silenziosa"</string>
-    <string name="notification_alert_title" msgid="7629202599338071971">"Avvisi"</string>
+    <string name="notification_alert_title" msgid="3656229781017543655">"Livello predefinito"</string>
     <string name="notification_bubble_title" msgid="8330481035191903164">"Fumetto"</string>
-    <string name="notification_channel_summary_low" msgid="7300447764759926720">"Favorisce la tua concentrazione grazie all\'assenza di suono o vibrazione."</string>
-    <string name="notification_channel_summary_default" msgid="3539949463907902037">"Richiama la tua attenzione con suono o vibrazione."</string>
-    <string name="notification_channel_summary_default_with_bubbles" msgid="6298026344552480458">"Richiama la tua attenzione con suono o vibrazione. Conversazioni dalla bolla <xliff:g id="APP_NAME">%1$s</xliff:g> per impostazione predefinita."</string>
+    <string name="notification_channel_summary_low" msgid="4860617986908931158">"Nessun suono o vibrazione"</string>
+    <string name="notification_conversation_summary_low" msgid="1734433426085468009">"Nessun suono o vibrazione e appare più in basso nella sezione delle conversazioni"</string>
+    <string name="notification_channel_summary_default" msgid="3282930979307248890">"Potrebbero essere attivati lo squillo o la vibrazione in base alle impostazioni del telefono"</string>
+    <string name="notification_channel_summary_default_with_bubbles" msgid="1782419896613644568">"Potrebbero essere attivati lo squillo o la vibrazione in base alle impostazioni del telefono. Conversazioni dalla bolla <xliff:g id="APP_NAME">%1$s</xliff:g> per impostazione predefinita."</string>
     <string name="notification_channel_summary_bubble" msgid="7235935211580860537">"Mantiene la tua attenzione con una scorciatoia mobile a questi contenuti."</string>
-    <string name="notification_channel_summary_priority" msgid="7415770044553264622">"Appare in cima alla sezione delle conversazioni sotto forma di bolla."</string>
+    <string name="notification_channel_summary_priority" msgid="7952654515769021553">"Viene mostrata in cima alla sezione delle conversazioni, appare sotto forma di bolla mobile, mostra l\'immagine del profilo nella schermata di blocco"</string>
     <string name="notification_conversation_channel_settings" msgid="2409977688430606835">"Impostazioni"</string>
     <string name="notification_priority_title" msgid="2079708866333537093">"Priorità"</string>
     <string name="no_shortcut" msgid="7176375126961212514">"<xliff:g id="APP_NAME">%1$s</xliff:g> non supporta impostazioni specifiche per le conversazioni"</string>
@@ -1027,6 +1033,13 @@
       <item quantity="other"><xliff:g id="NUMBER_1">%s</xliff:g> controlli aggiunti.</item>
       <item quantity="one"><xliff:g id="NUMBER_0">%s</xliff:g> controllo aggiunto.</item>
     </plurals>
+    <string name="controls_removed" msgid="3731789252222856959">"Rimosso"</string>
+    <string name="accessibility_control_favorite" msgid="8694362691985545985">"Aggiunto ai preferiti"</string>
+    <string name="accessibility_control_favorite_position" msgid="54220258048929221">"Preferito, posizione <xliff:g id="NUMBER">%d</xliff:g>"</string>
+    <string name="accessibility_control_not_favorite" msgid="1291760269563092359">"Rimosso dai preferiti"</string>
+    <string name="accessibility_control_change_favorite" msgid="2943178027582253261">"aggiungere l\'elemento ai preferiti"</string>
+    <string name="accessibility_control_change_unfavorite" msgid="6997408061750740327">"rimuovere l\'elemento dai preferiti"</string>
+    <string name="accessibility_control_move" msgid="8980344493796647792">"Sposta nella posizione <xliff:g id="NUMBER">%d</xliff:g>"</string>
     <string name="controls_favorite_default_title" msgid="967742178688938137">"Controlli"</string>
     <string name="controls_favorite_subtitle" msgid="6604402232298443956">"Seleziona i controlli a cui accedere dal menu di accensione"</string>
     <string name="controls_favorite_rearrange" msgid="5616952398043063519">"Tieni premuto e trascina per riordinare i controlli"</string>

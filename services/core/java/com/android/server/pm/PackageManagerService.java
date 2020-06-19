@@ -370,6 +370,7 @@ import com.android.server.pm.permission.PermissionsState;
 import com.android.server.policy.PermissionPolicyInternal;
 import com.android.server.security.VerityUtils;
 import com.android.server.storage.DeviceStorageMonitorInternal;
+import com.android.server.uri.UriGrantsManagerInternal;
 import com.android.server.utils.TimingsTraceAndSlog;
 import com.android.server.wm.ActivityTaskManagerInternal;
 
@@ -2713,13 +2714,13 @@ public class PackageManagerService extends IPackageManager.Stub
                     return SCAN_AS_SYSTEM_EXT;
                 default:
                     throw new IllegalStateException("Unable to determine scan flag for "
-                            + partition.folder);
+                            + partition.getFolder());
             }
         }
 
         @Override
         public String toString() {
-            return folder.getAbsolutePath() + ":" + scanFlag;
+            return getFolder().getAbsolutePath() + ":" + scanFlag;
         }
     }
 
@@ -3185,7 +3186,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 }
             }
 
-            final int cachedSystemApps = PackageParser.sCachedPackageReadCount.get();
+            final int cachedSystemApps = PackageCacher.sCachedPackageReadCount.get();
 
             // Remove any shared userIDs that have no associated packages
             mSettings.pruneSharedUsersLPw();
@@ -3286,7 +3287,7 @@ public class PackageManagerService extends IPackageManager.Stub
 
                         @ParseFlags int reparseFlags = 0;
                         @ScanFlags int rescanFlags = 0;
-                        for (int i1 = 0, size = mDirsToScanAsSystem.size(); i1 < size; i1++) {
+                        for (int i1 = mDirsToScanAsSystem.size() - 1; i1 >= 0; i1--) {
                             final ScanPartition partition = mDirsToScanAsSystem.get(i1);
                             if (partition.containsPrivApp(scanFile)) {
                                 reparseFlags = systemParseFlags;
@@ -3319,7 +3320,7 @@ public class PackageManagerService extends IPackageManager.Stub
                 // This must be done last to ensure all stubs are replaced or disabled.
                 installSystemStubPackages(stubSystemApps, scanFlags);
 
-                final int cachedNonSystemApps = PackageParser.sCachedPackageReadCount.get()
+                final int cachedNonSystemApps = PackageCacher.sCachedPackageReadCount.get()
                                 - cachedSystemApps;
 
                 final long dataScanTime = SystemClock.uptimeMillis() - systemScanTime - startTime;
@@ -4439,6 +4440,11 @@ public class PackageManagerService extends IPackageManager.Stub
         if (getInstantAppPackageName(callingUid) != null) {
             throw new SecurityException("Instant applications don't have access to this method");
         }
+        if (!mUserManager.exists(userId)) {
+            throw new SecurityException("User doesn't exist");
+        }
+        mPermissionManager.enforceCrossUserPermission(
+                callingUid, userId, false, false, "checkPackageStartable");
         final boolean userKeyUnlocked = StorageManager.isUserKeyUnlocked(userId);
         synchronized (mLock) {
             final PackageSetting ps = mSettings.mPackages.get(packageName);
@@ -5811,9 +5817,15 @@ public class PackageManagerService extends IPackageManager.Stub
 
     @Override
     public ChangedPackages getChangedPackages(int sequenceNumber, int userId) {
-        if (getInstantAppPackageName(Binder.getCallingUid()) != null) {
+        final int callingUid = Binder.getCallingUid();
+        if (getInstantAppPackageName(callingUid) != null) {
             return null;
         }
+        if (!mUserManager.exists(userId)) {
+            return null;
+        }
+        mPermissionManager.enforceCrossUserPermission(
+                callingUid, userId, false, false, "getChangedPackages");
         synchronized (mLock) {
             if (sequenceNumber >= mChangedPackagesSequenceNumber) {
                 return null;
@@ -8637,7 +8649,7 @@ public class PackageManagerService extends IPackageManager.Stub
                         // Shared lib filtering done in generateApplicationInfoFromSettingsLPw
                         // and already converts to externally visible package name
                         ai = generateApplicationInfoFromSettingsLPw(ps.name,
-                                callingUid, effectiveFlags, userId);
+                                effectiveFlags, callingUid, userId);
                     }
                     if (ai != null) {
                         list.add(ai);
@@ -8833,9 +8845,23 @@ public class PackageManagerService extends IPackageManager.Stub
 
     private ProviderInfo resolveContentProviderInternal(String name, int flags, int userId) {
         if (!mUserManager.exists(userId)) return null;
-        flags = updateFlagsForComponent(flags, userId);
         final int callingUid = Binder.getCallingUid();
+        flags = updateFlagsForComponent(flags, userId);
         final ProviderInfo providerInfo = mComponentResolver.queryProvider(name, flags, userId);
+        boolean checkedGrants = false;
+        if (providerInfo != null) {
+            // Looking for cross-user grants before enforcing the typical cross-users permissions
+            if (userId != UserHandle.getUserId(callingUid)) {
+                final UriGrantsManagerInternal mUgmInternal =
+                        LocalServices.getService(UriGrantsManagerInternal.class);
+                checkedGrants =
+                        mUgmInternal.checkAuthorityGrants(callingUid, providerInfo, userId, true);
+            }
+        }
+        if (!checkedGrants) {
+            mPermissionManager.enforceCrossUserPermission(
+                    callingUid, userId, false, false, "resolveContentProvider");
+        }
         if (providerInfo == null) {
             return null;
         }
@@ -13254,7 +13280,9 @@ public class PackageManagerService extends IPackageManager.Stub
 
     private void enforceCanSetPackagesSuspendedAsUser(String callingPackage, int callingUid,
             int userId, String callingMethod) {
-        if (callingUid == Process.ROOT_UID || callingUid == Process.SYSTEM_UID) {
+        if (callingUid == Process.ROOT_UID
+                // Need to compare app-id to allow system dialogs access on secondary users
+                || UserHandle.getAppId(callingUid) == Process.SYSTEM_UID) {
             return;
         }
 
@@ -16331,10 +16359,16 @@ public class PackageManagerService extends IPackageManager.Stub
                     // signing certificate than the existing one, and if so, copy over the new
                     // details
                     if (signatureCheckPs.sharedUser != null) {
-                        if (parsedPackage.getSigningDetails().hasAncestor(
-                                signatureCheckPs.sharedUser.signatures.mSigningDetails)) {
-                            signatureCheckPs.sharedUser.signatures.mSigningDetails =
-                                    parsedPackage.getSigningDetails();
+                        // Attempt to merge the existing lineage for the shared SigningDetails with
+                        // the lineage of the new package; if the shared SigningDetails are not
+                        // returned this indicates the new package added new signers to the lineage
+                        // and/or changed the capabilities of existing signers in the lineage.
+                        SigningDetails sharedSigningDetails =
+                                signatureCheckPs.sharedUser.signatures.mSigningDetails;
+                        SigningDetails mergedDetails = sharedSigningDetails.mergeLineageWith(
+                                signingDetails);
+                        if (mergedDetails != sharedSigningDetails) {
+                            signatureCheckPs.sharedUser.signatures.mSigningDetails = mergedDetails;
                         }
                         if (signatureCheckPs.sharedUser.signaturesChanged == null) {
                             signatureCheckPs.sharedUser.signaturesChanged = Boolean.FALSE;
@@ -18728,7 +18762,7 @@ public class PackageManagerService extends IPackageManager.Stub
         for (int i = 0, size = SYSTEM_PARTITIONS.size(); i < size; i++) {
             ScanPartition sp = SYSTEM_PARTITIONS.get(i);
             if (apexInfo.preInstalledApexPath.getAbsolutePath().startsWith(
-                    sp.folder.getAbsolutePath())) {
+                    sp.getFolder().getAbsolutePath())) {
                 return new ScanPartition(apexInfo.apexDirectory, sp, SCAN_AS_APK_IN_APEX);
             }
         }
@@ -18824,23 +18858,23 @@ public class PackageManagerService extends IPackageManager.Stub
             @Nullable int[] allUserHandles, @Nullable int[] origUserHandles,
             @Nullable PermissionsState origPermissionState, boolean writeSettings)
                     throws PackageManagerException {
+        final File codePath = new File(codePathString);
         @ParseFlags int parseFlags =
                 mDefParseFlags
                 | PackageParser.PARSE_MUST_BE_APK
                 | PackageParser.PARSE_IS_SYSTEM_DIR;
         @ScanFlags int scanFlags = SCAN_AS_SYSTEM;
-        for (int i = 0, size = mDirsToScanAsSystem.size(); i < size; i++) {
+        for (int i = mDirsToScanAsSystem.size() - 1; i >= 0; i--) {
             ScanPartition partition = mDirsToScanAsSystem.get(i);
-            if (partition.containsPath(codePathString)) {
+            if (partition.containsFile(codePath)) {
                 scanFlags |= partition.scanFlag;
-                if (partition.containsPrivPath(codePathString)) {
+                if (partition.containsPrivApp(codePath)) {
                     scanFlags |= SCAN_AS_PRIVILEGED;
                 }
                 break;
             }
         }
 
-        final File codePath = new File(codePathString);
         final AndroidPackage pkg =
                 scanPackageTracedLI(codePath, parseFlags, scanFlags, 0 /*currentTime*/, null);
 
@@ -24593,9 +24627,10 @@ public class PackageManagerService extends IPackageManager.Stub
                 if (updatedPackageNames != null) {
                     outUpdatedPackageNames.addAll(updatedPackageNames);
                 }
-
-                return true;
             }
+
+            PackageManager.invalidatePackageInfoCache();
+            return true;
         }
 
         @Override

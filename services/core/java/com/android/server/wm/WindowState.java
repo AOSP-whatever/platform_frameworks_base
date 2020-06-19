@@ -113,6 +113,7 @@ import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_ADD_REMOVE;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_APP_TRANSITIONS;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_FOCUS;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_FOCUS_LIGHT;
+import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_IME;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_ORIENTATION;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_RESIZE;
 import static com.android.server.wm.ProtoLogGroup.WM_DEBUG_STARTING_WINDOW;
@@ -334,6 +335,8 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     private boolean mDragResizing;
     private boolean mDragResizingChangeReported = true;
     private int mResizeMode;
+    private boolean mResizeForBlastSyncReported;
+
     /**
      * Special mode that is intended only for the rounded corner overlay: during rotation
      * transition, we un-rotate the window token such that the window appears as it did before the
@@ -1370,11 +1373,14 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         // variables, because mFrameSizeChanged only tracks the width and height changing.
         updateLastFrames();
 
+        // Add a window that is using blastSync to the resizing list if it hasn't been reported
+        // already. This because the window is waiting on a finishDrawing from the client.
         if (didFrameInsetsChange
                 || winAnimator.mSurfaceResized
                 || configChanged
                 || dragResizingChanged
-                || mReportOrientationChanged) {
+                || mReportOrientationChanged
+                || requestResizeForBlastSync()) {
             ProtoLog.v(WM_DEBUG_RESIZE,
                         "Resize reasons for w=%s:  %s surfaceResized=%b configChanged=%b "
                                 + "dragResizingChanged=%b reportOrientationChanged=%b",
@@ -1509,7 +1515,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         return mActivityRecord != null ? mActivityRecord.getTask() : null;
     }
 
-    ActivityStack getRootTask() {
+    @Nullable ActivityStack getRootTask() {
         final Task task = getTask();
         if (task != null) {
             return (ActivityStack) task.getRootTask();
@@ -1784,7 +1790,11 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         final ActivityRecord atoken = mActivityRecord;
         return mViewVisibility == View.GONE
                 || !mRelayoutCalled
-                || (atoken == null && !mToken.isVisible())
+                // We can't check isVisible here because it will also check the client visibility
+                // for WindowTokens. Even if the client is not visible, we still need to perform
+                // a layout since they can request relayout when client visibility is false.
+                // TODO (b/157682066) investigate if we can clean up isVisible
+                || (atoken == null && !(wouldBeVisibleIfPolicyIgnored() && isVisibleByPolicy()))
                 || (atoken != null && !atoken.mVisibleRequested)
                 || isParentWindowGoneForLayout()
                 || (mAnimatingExit && !isAnimatingLw())
@@ -2262,7 +2272,29 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         mHasSurface = hasSurface;
     }
 
+    /**
+     * Checks whether one of the Windows in a Display embedded in this Window can be an IME target.
+     */
+    private boolean canWindowInEmbeddedDisplayBeImeTarget() {
+        final int embeddedDisplayContentsSize = mEmbeddedDisplayContents.size();
+        for (int i = embeddedDisplayContentsSize - 1; i >= 0; i--) {
+            final DisplayContent edc = mEmbeddedDisplayContents.valueAt(i);
+            if (edc.forAllWindows(WindowState::canBeImeTarget, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     boolean canBeImeTarget() {
+        // If any of the embedded windows can be the IME target, this window will be the final IME
+        // target. This is because embedded windows are on a different display in WM so it would
+        // cause confusion trying to set the IME to a window on a different display. Instead, just
+        // make the host window the IME target.
+        if (canWindowInEmbeddedDisplayBeImeTarget()) {
+            return true;
+        }
+
         if (mIsImWindow) {
             // IME windows can't be IME targets. IME targets are required to be below the IME
             // windows and that wouldn't be possible if the IME window is its own target...silly.
@@ -2527,7 +2559,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             final Task task = getTask();
             if (task != null) {
                 task.getDimBounds(mTmpRect);
-            } else {
+            } else if (getRootTask() != null) {
                 getRootTask().getDimBounds(mTmpRect);
             }
         }
@@ -3461,6 +3493,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         mReportOrientationChanged = false;
         mDragResizingChangeReported = true;
         mWinAnimator.mSurfaceResized = false;
+        mResizeForBlastSyncReported = true;
         mWindowFrames.resetInsetsChanged();
 
         final Rect frame = mWindowFrames.mCompatFrame;
@@ -3531,6 +3564,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
      * Called when the insets state changed.
      */
     void notifyInsetsChanged() {
+        ProtoLog.d(WM_DEBUG_IME, "notifyInsetsChanged for %s ", this);
         try {
             mClient.insetsChanged(getInsetsState());
         } catch (RemoteException e) {
@@ -3540,6 +3574,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
 
     @Override
     public void notifyInsetsControlChanged() {
+        ProtoLog.d(WM_DEBUG_IME, "notifyInsetsControlChanged for %s ", this);
         final InsetsStateController stateController =
                 getDisplayContent().getInsetsStateController();
         try {
@@ -5209,7 +5244,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     private void applyDims(Dimmer dimmer) {
         if (!mAnimatingExit && mAppDied) {
             mIsDimming = true;
-            dimmer.dimAbove(getPendingTransaction(), this, DEFAULT_DIM_AMOUNT_DEAD_WINDOW);
+            dimmer.dimAbove(getSyncTransaction(), this, DEFAULT_DIM_AMOUNT_DEAD_WINDOW);
         } else if ((mAttrs.flags & FLAG_DIM_BEHIND) != 0 && isVisibleNow() && !mHidden) {
             // Only show a dim behind when the following is satisfied:
             // 1. The window has the flag FLAG_DIM_BEHIND
@@ -5217,7 +5252,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             // 3. The WS is considered visible according to the isVisible() method
             // 4. The WS is not hidden.
             mIsDimming = true;
-            dimmer.dimBelow(getPendingTransaction(), this, mAttrs.dimAmount);
+            dimmer.dimBelow(getSyncTransaction(), this, mAttrs.dimAmount);
         }
     }
 
@@ -5478,7 +5513,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     }
 
     long getFrameNumber() {
-        return mFrameNumber;
+        // Return the frame number in which changes requested in this layout will be rendered or
+        // -1 if we do not expect the frame to be rendered.
+        return getFrameLw().isEmpty() ? -1 : mFrameNumber;
     }
 
     void setFrameNumber(long frameNumber) {
@@ -5707,16 +5744,21 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     @Override
     boolean prepareForSync(BLASTSyncEngine.TransactionReadyListener waitingListener,
             int waitingId) {
-        if (!isVisible()) {
+        boolean willSync = setPendingListener(waitingListener, waitingId);
+        if (!willSync) {
             return false;
         }
-        mWaitingListener = waitingListener;
-        mWaitingSyncId = waitingId;
-        mUsingBLASTSyncTransaction = true;
+        mResizeForBlastSyncReported = false;
 
         mLocalSyncId = mBLASTSyncEngine.startSyncSet(this);
         addChildrenToSyncSet(mLocalSyncId);
 
+        // In the WindowContainer implementation we immediately mark ready
+        // since a generic WindowContainer only needs to wait for its
+        // children to finish and is immediately ready from its own
+        // perspective but at the WindowState level we need to wait for ourselves
+        // to draw even if the children draw first our don't need to sync, so we omit
+        // the set ready call until later in finishDrawing()
         mWmService.mH.removeMessages(WINDOW_STATE_BLAST_SYNC_TIMEOUT, this);
         mWmService.mH.sendNewMessageDelayed(WINDOW_STATE_BLAST_SYNC_TIMEOUT, this,
             BLAST_TIMEOUT_DURATION);
@@ -5750,5 +5792,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         mWaitingSyncId = 0;
         mWaitingListener = null;
         return mWinAnimator.finishDrawingLocked(null);
+    }
+
+    private boolean requestResizeForBlastSync() {
+        return useBLASTSync() && !mResizeForBlastSyncReported;
     }
 }

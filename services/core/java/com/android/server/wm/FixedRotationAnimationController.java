@@ -20,7 +20,8 @@ import static com.android.server.wm.AnimationSpecProto.WINDOW;
 import static com.android.server.wm.SurfaceAnimator.ANIMATION_TYPE_FIXED_TRANSFORM;
 import static com.android.server.wm.WindowAnimationSpecProto.ANIMATION;
 
-import android.content.res.Configuration;
+import android.content.Context;
+import android.util.ArrayMap;
 import android.util.proto.ProtoOutputStream;
 import android.view.SurfaceControl;
 import android.view.animation.Animation;
@@ -41,103 +42,70 @@ import java.util.ArrayList;
  */
 public class FixedRotationAnimationController {
 
-    private final WindowManagerService mWmService;
-    private boolean mShowRequested = true;
-    private int mTargetRotation = Configuration.ORIENTATION_UNDEFINED;
-    private final ArrayList<WindowState> mAnimatedWindowStates = new ArrayList<>(2);
-    private final Runnable[] mDeferredFinishCallbacks;
+    private final Context mContext;
+    private final WindowState mStatusBar;
+    private final WindowState mNavigationBar;
+    private final ArrayList<WindowToken> mAnimatedWindowToken = new ArrayList<>(2);
+    private final ArrayMap<WindowToken, Runnable> mDeferredFinishCallbacks = new ArrayMap<>();
 
     public FixedRotationAnimationController(DisplayContent displayContent) {
-        mWmService = displayContent.mWmService;
-        addAnimatedWindow(displayContent.getDisplayPolicy().getStatusBar());
-        addAnimatedWindow(displayContent.getDisplayPolicy().getNavigationBar());
-        mDeferredFinishCallbacks = new Runnable[mAnimatedWindowStates.size()];
+        mContext = displayContent.mWmService.mContext;
+        final DisplayPolicy displayPolicy = displayContent.getDisplayPolicy();
+        mStatusBar = displayPolicy.getStatusBar();
+        // Do not animate movable navigation bar (e.g. non-gesture mode).
+        mNavigationBar = !displayPolicy.navigationBarCanMove()
+                ? displayPolicy.getNavigationBar()
+                : null;
     }
 
-    private void addAnimatedWindow(WindowState windowState) {
-        if (windowState != null) {
-            mAnimatedWindowStates.add(windowState);
+    /** Applies show animation on the previously hidden window tokens. */
+    void show() {
+        for (int i = mAnimatedWindowToken.size() - 1; i >= 0; i--) {
+            final WindowToken windowToken = mAnimatedWindowToken.get(i);
+            fadeWindowToken(true /* show */, windowToken);
         }
     }
 
-    /**
-     * Show the previously hidden {@link WindowToken} if their surfaces have already been rotated.
-     *
-     * @return True if the show animation has been started, in which case the caller no longer needs
-     * this {@link FixedRotationAnimationController}.
-     */
-    boolean show() {
-        if (!mShowRequested && readyToShow()) {
-            mShowRequested = true;
-            for (int i = mAnimatedWindowStates.size() - 1; i >= 0; i--) {
-                WindowState windowState = mAnimatedWindowStates.get(i);
-                fadeWindowToken(true, windowState.getParent(), i);
-            }
-            return true;
+    /** Applies hide animation on the window tokens which may be seamlessly rotated later. */
+    void hide() {
+        if (mNavigationBar != null) {
+            fadeWindowToken(false /* show */, mNavigationBar.mToken);
         }
-        return false;
-    }
-
-    void hide(int targetRotation) {
-        mTargetRotation = targetRotation;
-        if (mShowRequested) {
-            mShowRequested = false;
-            for (int i = mAnimatedWindowStates.size() - 1; i >= 0; i--) {
-                WindowState windowState = mAnimatedWindowStates.get(i);
-                fadeWindowToken(false /* show */, windowState.getParent(), i);
-            }
+        if (mStatusBar != null) {
+            fadeWindowToken(false /* show */, mStatusBar.mToken);
         }
     }
 
-    void cancel() {
-        for (int i = mAnimatedWindowStates.size() - 1; i >= 0; i--) {
-            WindowState windowState = mAnimatedWindowStates.get(i);
-            mShowRequested = true;
-            fadeWindowToken(true /* show */, windowState.getParent(), i);
+    private void fadeWindowToken(boolean show, WindowToken windowToken) {
+        if (windowToken == null || windowToken.getParent() == null) {
+            return;
         }
-    }
 
-    private void fadeWindowToken(boolean show, WindowContainer<WindowToken> windowToken,
-            int index) {
-        Animation animation = AnimationUtils.loadAnimation(mWmService.mContext,
+        final Animation animation = AnimationUtils.loadAnimation(mContext,
                 show ? R.anim.fade_in : R.anim.fade_out);
-        LocalAnimationAdapter.AnimationSpec windowAnimationSpec = createAnimationSpec(animation);
+        final LocalAnimationAdapter.AnimationSpec windowAnimationSpec =
+                createAnimationSpec(animation);
 
-        FixedRotationAnimationAdapter animationAdapter = new FixedRotationAnimationAdapter(
-                windowAnimationSpec, windowToken.getSurfaceAnimationRunner(), show, index);
+        final FixedRotationAnimationAdapter animationAdapter = new FixedRotationAnimationAdapter(
+                windowAnimationSpec, windowToken.getSurfaceAnimationRunner(), show, windowToken);
 
         // We deferred the end of the animation when hiding the token, so we need to end it now that
         // it's shown again.
-        SurfaceAnimator.OnAnimationFinishedCallback finishedCallback = show ? (t, r) -> {
-            if (mDeferredFinishCallbacks[index] != null) {
-                mDeferredFinishCallbacks[index].run();
-                mDeferredFinishCallbacks[index] = null;
+        final SurfaceAnimator.OnAnimationFinishedCallback finishedCallback = show ? (t, r) -> {
+            final Runnable runnable = mDeferredFinishCallbacks.remove(windowToken);
+            if (runnable != null) {
+                runnable.run();
             }
         } : null;
         windowToken.startAnimation(windowToken.getPendingTransaction(), animationAdapter,
-                mShowRequested, ANIMATION_TYPE_FIXED_TRANSFORM, finishedCallback);
+                show /* hidden */, ANIMATION_TYPE_FIXED_TRANSFORM, finishedCallback);
+        mAnimatedWindowToken.add(windowToken);
     }
-
-    /**
-     * Check if all the mAnimatedWindowState's surfaces have been rotated to the
-     * mTargetRotation.
-     */
-    private boolean readyToShow() {
-        for (int i = mAnimatedWindowStates.size() - 1; i >= 0; i--) {
-            WindowState windowState = mAnimatedWindowStates.get(i);
-            if (windowState.getConfiguration().windowConfiguration.getRotation()
-                    != mTargetRotation || windowState.mPendingSeamlessRotate != null) {
-                return false;
-            }
-        }
-        return true;
-    }
-
 
     private LocalAnimationAdapter.AnimationSpec createAnimationSpec(Animation animation) {
         return new LocalAnimationAdapter.AnimationSpec() {
 
-            Transformation mTransformation = new Transformation();
+            final Transformation mTransformation = new Transformation();
 
             @Override
             public boolean getShowWallpaper() {
@@ -174,13 +142,14 @@ public class FixedRotationAnimationController {
 
     private class FixedRotationAnimationAdapter extends LocalAnimationAdapter {
         private final boolean mShow;
-        private final int mIndex;
+        private final WindowToken mToken;
 
         FixedRotationAnimationAdapter(AnimationSpec windowAnimationSpec,
-                SurfaceAnimationRunner surfaceAnimationRunner, boolean show, int index) {
+                SurfaceAnimationRunner surfaceAnimationRunner, boolean show,
+                WindowToken token) {
             super(windowAnimationSpec, surfaceAnimationRunner);
             mShow = show;
-            mIndex = index;
+            mToken = token;
         }
 
         @Override
@@ -188,7 +157,7 @@ public class FixedRotationAnimationController {
             // We defer the end of the hide animation to ensure the tokens stay hidden until
             // we show them again.
             if (!mShow) {
-                mDeferredFinishCallbacks[mIndex] = endDeferFinishCallback;
+                mDeferredFinishCallbacks.put(mToken, endDeferFinishCallback);
                 return true;
             }
             return false;

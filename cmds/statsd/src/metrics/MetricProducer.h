@@ -82,7 +82,9 @@ enum BucketDropReason {
     DIMENSION_GUARDRAIL_REACHED = 6,
     MULTIPLE_BUCKETS_SKIPPED = 7,
     // Not an invalid bucket case, but the bucket is dropped.
-    BUCKET_TOO_SMALL = 8
+    BUCKET_TOO_SMALL = 8,
+    // Not an invalid bucket case, but the bucket is skipped.
+    NO_DATA = 9
 };
 
 struct Activation {
@@ -182,8 +184,8 @@ public:
     };
 
     void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
-                        const HashableDimensionKey& primaryKey, const int32_t oldState,
-                        const int32_t newState){};
+                        const HashableDimensionKey& primaryKey, const FieldValue& oldState,
+                        const FieldValue& newState){};
 
     // Output the metrics data to [protoOutput]. All metrics reports end with the same timestamp.
     // This method clears all the past buckets.
@@ -384,6 +386,10 @@ protected:
     // If no state map exists, keep the original state value.
     void mapStateValue(const int32_t atomId, FieldValue* value);
 
+    // Returns a HashableDimensionKey with unknown state value for each state
+    // atom.
+    HashableDimensionKey getUnknownStateKey();
+
     DropEvent buildDropEvent(const int64_t dropTimeNs, const BucketDropReason reason);
 
     // Returns true if the number of drop events in the current bucket has
@@ -459,6 +465,7 @@ protected:
     FRIEND_TEST(CountMetricE2eTest, TestSlicedStateWithMap);
     FRIEND_TEST(CountMetricE2eTest, TestMultipleSlicedStates);
     FRIEND_TEST(CountMetricE2eTest, TestSlicedStateWithPrimaryFields);
+    FRIEND_TEST(CountMetricE2eTest, TestInitialConditionChanges);
 
     FRIEND_TEST(DurationMetricE2eTest, TestOneBucket);
     FRIEND_TEST(DurationMetricE2eTest, TestTwoBuckets);
@@ -488,6 +495,7 @@ protected:
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState_WithDimensions);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState_WithIncorrectDimensions);
+    FRIEND_TEST(ValueMetricE2eTest, TestInitialConditionChanges);
 };
 
 }  // namespace statsd

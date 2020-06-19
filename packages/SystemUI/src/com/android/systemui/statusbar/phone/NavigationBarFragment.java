@@ -111,7 +111,6 @@ import com.android.systemui.recents.OverviewProxyService;
 import com.android.systemui.recents.Recents;
 import com.android.systemui.shared.system.ActivityManagerWrapper;
 import com.android.systemui.shared.system.QuickStepContract;
-import com.android.systemui.shared.system.TaskStackChangeListener;
 import com.android.systemui.stackdivider.Divider;
 import com.android.systemui.statusbar.AutoHideUiElement;
 import com.android.systemui.statusbar.CommandQueue;
@@ -179,8 +178,6 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
     private final Lazy<StatusBar> mStatusBarLazy;
     private final ShadeController mShadeController;
     private final NotificationRemoteInputManager mNotificationRemoteInputManager;
-    private Recents mRecents;
-    private StatusBar mStatusBar;
     private final Divider mDivider;
     private final Optional<Recents> mRecentsOptional;
     private WindowManager mWindowManager;
@@ -222,7 +219,6 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
      */
     private NavigationHandle mOrientationHandle;
     private WindowManager.LayoutParams mOrientationParams;
-    private boolean mFrozenTasks;
     private int mStartingQuickSwitchRotation;
     private int mCurrentRotation;
     private boolean mFixedRotationEnabled;
@@ -302,14 +298,6 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
                         (forceVisible || alpha > 0) ? View.VISIBLE : View.INVISIBLE);
                 buttonDispatcher.setAlpha(forceVisible ? 1f : alpha, animate);
             }
-        }
-    };
-
-    private TaskStackChangeListener mTasksFrozenListener = new TaskStackChangeListener() {
-        @Override
-        public void onRecentTaskListFrozenChanged(boolean frozen) {
-            mFrozenTasks = frozen;
-            orientSecondaryHomeHandle();
         }
     };
 
@@ -510,7 +498,6 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
         }
 
         initSecondaryHomeHandleForRotation();
-        ActivityManagerWrapper.getInstance().registerTaskStackListener(mTasksFrozenListener);
     }
 
     @Override
@@ -527,7 +514,6 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
         }
         mOverviewProxyService.removeCallback(mOverviewProxyListener);
         mBroadcastDispatcher.unregisterReceiver(mBroadcastReceiver);
-        ActivityManagerWrapper.getInstance().unregisterTaskStackListener(mTasksFrozenListener);
         if (mOrientationHandle != null) {
             resetSecondaryHandle();
             getContext().getSystemService(DisplayManager.class).unregisterDisplayListener(this);
@@ -594,7 +580,9 @@ public class NavigationBarFragment extends LifecycleFragment implements Callback
             return;
         }
 
-        if (!mFrozenTasks) {
+        if (mStartingQuickSwitchRotation == -1 || mDivider.isDividerVisible()) {
+            // Hide the secondary home handle if we are in multiwindow since apps in multiwindow
+            // aren't allowed to set the display orientation
             resetSecondaryHandle();
         } else {
             int deltaRotation = deltaRotation(mCurrentRotation, mStartingQuickSwitchRotation);

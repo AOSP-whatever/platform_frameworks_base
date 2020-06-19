@@ -1259,10 +1259,10 @@
     <string name="notification_section_header_incoming">Incoming</string>
 
     <!-- Section title for notifications that do not vibrate or make noise. [CHAR LIMIT=40] -->
-    <string name="notification_section_header_gentle">Silent notifications</string>
+    <string name="notification_section_header_gentle">Silent</string>
 
     <!-- Section title for notifications that vibrate or make noise. [CHAR LIMIT=40] -->
-    <string name="notification_section_header_alerting">Alerting notifications</string>
+    <string name="notification_section_header_alerting">Notifications</string>
 
     <!-- Section title for conversational notifications. [CHAR LIMIT=40] -->
     <string name="notification_section_header_conversations">Conversations</string>
@@ -1512,7 +1512,7 @@
     <string name="accessibility_output_chooser">Switch output device</string>
 
     <!-- Screen pinning dialog title. -->
-    <string name="screen_pinning_title">Screen is pinned</string>
+    <string name="screen_pinning_title">App is pinned</string>
     <!-- Screen pinning dialog description. -->
     <string name="screen_pinning_description">This keeps it in view until you unpin. Touch &amp; hold Back and Overview to unpin.</string>
     <string name="screen_pinning_description_recents_invisible">This keeps it in view until you unpin. Touch &amp; hold Back and Home to unpin.</string>
@@ -1520,20 +1520,24 @@
     <!-- Screen pinning dialog description. -->
     <string name="screen_pinning_description_accessible">This keeps it in view until you unpin. Touch &amp; hold Overview to unpin.</string>
     <string name="screen_pinning_description_recents_invisible_accessible">This keeps it in view until you unpin. Touch &amp; hold Home to unpin.</string>
+    <!-- Screen pinning security warning: personal data, email, contacts may be exposed while screen is pinned. [CHAR LIMIT=NONE] -->
+    <string name="screen_pinning_exposes_personal_data">Personal data may be accessible (such as contacts and email content).</string>
+    <!-- Screen pinning security warning: a pinned app can still launch other apps. [CHAR LIMIT=NONE] -->
+    <string name="screen_pinning_can_open_other_apps">Pinned app may open other apps.</string>
     <!-- Notify use that they are in Lock-to-app -->
-    <string name="screen_pinning_toast">To unpin this screen, touch &amp; hold Back and Overview
+    <string name="screen_pinning_toast">To unpin this app, touch &amp; hold Back and Overview
         buttons</string>
-    <string name="screen_pinning_toast_recents_invisible">To unpin this screen, touch &amp; hold Back
+    <string name="screen_pinning_toast_recents_invisible">To unpin this app, touch &amp; hold Back
         and Home buttons</string>
     <!-- Notify (in toast) user how to unpin screen in gesture navigation mode [CHAR LIMIT=NONE] -->
-    <string name="screen_pinning_toast_gesture_nav">To unpin this screen, swipe up &amp; hold</string>
+    <string name="screen_pinning_toast_gesture_nav">To unpin this app, swipe up &amp; hold</string>
     <!-- Screen pinning positive response. -->
     <string name="screen_pinning_positive">Got it</string>
     <!-- Screen pinning negative response. -->
     <string name="screen_pinning_negative">No thanks</string>
     <!-- Enter/Exiting screen pinning indication. -->
-    <string name="screen_pinning_start">Screen pinned</string>
-    <string name="screen_pinning_exit">Screen unpinned</string>
+    <string name="screen_pinning_start">App pinned</string>
+    <string name="screen_pinning_exit">App unpinned</string>
 
 
     <!-- Hide quick settings tile confirmation title -->
@@ -1829,25 +1833,28 @@
     <string name="notification_silence_title">Silent</string>
 
     <!-- [CHAR LIMIT=100] Notification Importance title -->
-    <string name="notification_alert_title">Alerting</string>
+    <string name="notification_alert_title">Default</string>
 
     <!-- [CHAR LIMIT=100] Notification Importance title -->
     <string name="notification_bubble_title">Bubble</string>
 
     <!-- [CHAR LIMIT=150] Notification Importance title: low importance level summary -->
-    <string name="notification_channel_summary_low">Helps you focus without sound or vibration.</string>
+    <string name="notification_channel_summary_low">No sound or vibration</string>
+
+    <!-- [CHAR LIMIT=150] Notification Importance title: low importance level summary -->
+    <string name="notification_conversation_summary_low">No sound or vibration and appears lower in conversation section</string>
 
     <!-- [CHAR LIMIT=150] Notification Importance title: normal importance level summary -->
-    <string name="notification_channel_summary_default">Gets your attention with sound or vibration.</string>
+    <string name="notification_channel_summary_default">May ring or vibrate based on phone settings</string>
 
     <!-- [CHAR LIMIT=150] Conversation Notification Importance title: normal conversation level, with bubbling summary -->
-    <string name="notification_channel_summary_default_with_bubbles">Gets your attention with sound or vibration. Conversations from <xliff:g id="app_name" example="YouTube">%1$s</xliff:g> bubble by default.</string>
+    <string name="notification_channel_summary_default_with_bubbles">May ring or vibrate based on phone settings. Conversations from <xliff:g id="app_name" example="YouTube">%1$s</xliff:g> bubble by default.</string>
 
     <!-- [CHAR LIMIT=150] Notification Importance title: bubble level summary -->
     <string name="notification_channel_summary_bubble">Keeps your attention with a floating shortcut to this content.</string>
 
     <!-- [CHAR LIMIT=150] Notification Importance title: important conversation level summary -->
-    <string name="notification_channel_summary_priority">Shows at top of conversation section and appears as a bubble.</string>
+    <string name="notification_channel_summary_priority">Shows at top of conversation section, appears as floating bubble, displays profile picture on lock screen</string>
 
     <!--[CHAR LIMIT=30] Linkable text to Settings app -->
     <string name="notification_conversation_channel_settings">Settings</string>
@@ -1856,7 +1863,7 @@
     <string name="notification_priority_title">Priority</string>
 
     <!-- Text shown in notification guts for conversation notifications that don't implement the full feature -->
-    <string name="no_shortcut"><xliff:g id="app_name" example="YouTube">%1$s</xliff:g> does not support conversation specific settings</string>
+    <string name="no_shortcut"><xliff:g id="app_name" example="YouTube">%1$s</xliff:g> doesn\u2019t support conversation features</string>
 
     <!-- [CHAR LIMIT=NONE] Empty overflow title -->
     <string name="bubble_overflow_empty_title">No recent bubbles</string>
@@ -2711,6 +2718,8 @@
     <string name="accessibility_control_change_favorite">favorite</string>
     <!-- a11y action to unfavorite a control. It will read as "Double-tap to unfavorite" in screen readers [CHAR LIMIT=NONE] -->
     <string name="accessibility_control_change_unfavorite">unfavorite</string>
+    <!-- a11y action to move a control to the position specified by the parameter [CHAR LIMIT=NONE] -->
+    <string name="accessibility_control_move">Move to position <xliff:g id="number" example="1">%d</xliff:g></string>
 
     <!-- Controls management controls screen default title [CHAR LIMIT=30] -->
     <string name="controls_favorite_default_title">Controls</string>

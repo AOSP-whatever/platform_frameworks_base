@@ -21,11 +21,15 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.annotation.IntDef
 import android.content.Context
+import android.graphics.Rect
+import android.util.MathUtils
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroupOverlay
 import com.android.systemui.Interpolators
+import com.android.systemui.keyguard.WakefulnessLifecycle
 import com.android.systemui.plugins.statusbar.StatusBarStateController
+import com.android.systemui.statusbar.NotificationLockscreenUserManager
 import com.android.systemui.statusbar.StatusBarState
 import com.android.systemui.statusbar.SysuiStatusBarStateController
 import com.android.systemui.statusbar.notification.stack.StackStateAnimator
@@ -46,7 +50,8 @@ class MediaHierarchyManager @Inject constructor(
     private val keyguardStateController: KeyguardStateController,
     private val bypassController: KeyguardBypassController,
     private val mediaViewManager: MediaViewManager,
-    private val mediaMeasurementProvider: MediaMeasurementManager
+    private val notifLockscreenUserManager: NotificationLockscreenUserManager,
+    wakefulnessLifecycle: WakefulnessLifecycle
 ) {
     /**
      * The root overlay of the hierarchy. This is where the media notification is attached to
@@ -54,23 +59,31 @@ class MediaHierarchyManager @Inject constructor(
      * view is always in its final state when it is attached to a view host.
      */
     private var rootOverlay: ViewGroupOverlay? = null
-    private lateinit var currentState: MediaState
-    private val mediaCarousel
-        get() =  mediaViewManager.mediaCarousel
-    private var animationStartState: MediaState? = null
+
+    private var rootView: View? = null
+    private var currentBounds = Rect()
+    private var animationStartBounds: Rect = Rect()
+    private var targetBounds: Rect = Rect()
+    private val mediaFrame
+        get() = mediaViewManager.mediaFrame
     private var statusbarState: Int = statusBarStateController.state
     private var animator = ValueAnimator.ofFloat(0.0f, 1.0f).apply {
         interpolator = Interpolators.FAST_OUT_SLOW_IN
         addUpdateListener {
             updateTargetState()
-            applyState(animationStartState!!.interpolate(targetState!!, animatedFraction))
+            interpolateBounds(animationStartBounds, targetBounds, animatedFraction,
+                    result = currentBounds)
+            applyState(currentBounds)
         }
         addListener(object : AnimatorListenerAdapter() {
             private var cancelled: Boolean = false
 
             override fun onAnimationCancel(animation: Animator?) {
                 cancelled = true
+                animationPending = false
+                rootView?.removeCallbacks(startAnimation)
             }
+
             override fun onAnimationEnd(animation: Animator?) {
                 if (!cancelled) {
                     applyTargetStateIfNotAnimating()
@@ -79,30 +92,41 @@ class MediaHierarchyManager @Inject constructor(
 
             override fun onAnimationStart(animation: Animator?) {
                 cancelled = false
+                animationPending = false
             }
         })
     }
-    private var targetState: MediaState? = null
-    private val mediaHosts = arrayOfNulls<MediaHost>(LOCATION_LOCKSCREEN + 1)
 
+    private val mediaHosts = arrayOfNulls<MediaHost>(LOCATION_LOCKSCREEN + 1)
     /**
      * The last location where this view was at before going to the desired location. This is
      * useful for guided transitions.
      */
-    @MediaLocation private var previousLocation = -1
-
+    @MediaLocation
+    private var previousLocation = -1
     /**
      * The desired location where the view will be at the end of the transition.
      */
-    @MediaLocation private var desiredLocation = -1
+    @MediaLocation
+    private var desiredLocation = -1
 
     /**
      * The current attachment location where the view is currently attached.
      * Usually this matches the desired location except for animations whenever a view moves
      * to the new desired location, during which it is in [IN_OVERLAY].
      */
-    @MediaLocation private var currentAttachmentLocation = -1
+    @MediaLocation
+    private var currentAttachmentLocation = -1
 
+    /**
+     * Are we currently waiting on an animation to start?
+     */
+    private var animationPending: Boolean = false
+    private val startAnimation: Runnable = Runnable { animator.start() }
+
+    /**
+     * The expansion of quick settings
+     */
     var qsExpansion: Float = 0.0f
         set(value) {
             if (field != value) {
@@ -111,6 +135,40 @@ class MediaHierarchyManager @Inject constructor(
                 if (getQSTransformationProgress() >= 0) {
                     updateTargetState()
                     applyTargetStateIfNotAnimating()
+                }
+            }
+        }
+
+    /**
+     * Are location changes currently blocked?
+     */
+    private val blockLocationChanges: Boolean
+        get() {
+            return goingToSleep || dozeAnimationRunning
+        }
+
+    /**
+     * Are we currently going to sleep
+     */
+    private var goingToSleep: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                if (!value) {
+                    updateDesiredLocation()
+                }
+            }
+        }
+
+    /**
+     * Is the doze animation currently Running
+     */
+    private var dozeAnimationRunning: Boolean = false
+        private set(value) {
+            if (field != value) {
+                field = value
+                if (!value) {
+                    updateDesiredLocation()
                 }
             }
         }
@@ -127,6 +185,34 @@ class MediaHierarchyManager @Inject constructor(
             override fun onStateChanged(newState: Int) {
                 updateTargetState()
             }
+
+            override fun onDozeAmountChanged(linear: Float, eased: Float) {
+                dozeAnimationRunning = linear != 0.0f && linear != 1.0f
+            }
+
+            override fun onDozingChanged(isDozing: Boolean) {
+                if (!isDozing) {
+                    dozeAnimationRunning = false
+                }
+            }
+        })
+
+        wakefulnessLifecycle.addObserver(object : WakefulnessLifecycle.Observer {
+            override fun onFinishedGoingToSleep() {
+                goingToSleep = false
+            }
+
+            override fun onStartedGoingToSleep() {
+                goingToSleep = true
+            }
+
+            override fun onFinishedWakingUp() {
+                goingToSleep = false
+            }
+
+            override fun onStartedWakingUp() {
+                goingToSleep = false
+            }
         })
     }
 
@@ -136,9 +222,9 @@ class MediaHierarchyManager @Inject constructor(
      *
      * @return the hostView associated with this location
      */
-    fun register(mediaObject: MediaHost) : ViewGroup {
-        val viewHost = createUniqueObjectHost(mediaObject)
-        mediaObject.hostView = viewHost;
+    fun register(mediaObject: MediaHost): UniqueObjectHostView {
+        val viewHost = createUniqueObjectHost()
+        mediaObject.hostView = viewHost
         mediaHosts[mediaObject.location] = mediaObject
         if (mediaObject.location == desiredLocation) {
             // In case we are overriding a view that is already visible, make sure we attach it
@@ -152,22 +238,13 @@ class MediaHierarchyManager @Inject constructor(
         return viewHost
     }
 
-    private fun createUniqueObjectHost(host: MediaHost): UniqueObjectHostView {
+    private fun createUniqueObjectHost(): UniqueObjectHostView {
         val viewHost = UniqueObjectHostView(context)
-        viewHost.measurementCache = mediaMeasurementProvider.obtainCache(host)
-        viewHost.onMeasureListener =  { input ->
-            if (host.location == desiredLocation) {
-                // Measurement of the currently active player is happening, Let's make
-                // sure the player width is up to date
-                val measuringInput = host.getMeasuringInput(input)
-                mediaViewManager.setPlayerWidth(measuringInput.width)
-            }
-        }
-
         viewHost.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(p0: View?) {
                 if (rootOverlay == null) {
-                    rootOverlay = (viewHost.viewRootImpl.view.overlay as ViewGroupOverlay)
+                    rootView = viewHost.viewRootImpl.view
+                    rootOverlay = (rootView!!.overlay as ViewGroupOverlay)
                 }
                 viewHost.removeOnAttachStateChangeListener(this)
             }
@@ -193,8 +270,9 @@ class MediaHierarchyManager @Inject constructor(
             // Let's perform a transition
             val animate = shouldAnimateTransition(desiredLocation, previousLocation)
             val (animDuration, delay) = getAnimationParams(previousLocation, desiredLocation)
-            mediaViewManager.onDesiredLocationChanged(getHost(desiredLocation)?.currentState,
-                    animate, animDuration, delay)
+            val host = getHost(desiredLocation)
+            mediaViewManager.onDesiredLocationChanged(desiredLocation, host, animate, animDuration,
+                    delay)
             performTransitionToNewLocation(isNewView, animate)
         }
     }
@@ -215,19 +293,23 @@ class MediaHierarchyManager @Inject constructor(
             applyTargetStateIfNotAnimating()
         } else if (animate) {
             animator.cancel()
-            if (currentAttachmentLocation == IN_OVERLAY
-                    || !previousHost.hostView.isAttachedToWindow) {
+            if (currentAttachmentLocation == IN_OVERLAY ||
+                    !previousHost.hostView.isAttachedToWindow) {
                 // Let's animate to the new position, starting from the current position
                 // We also go in here in case the view was detached, since the bounds wouldn't
                 // be correct anymore
-                animationStartState = currentState.copy()
+                animationStartBounds.set(currentBounds)
             } else {
                 // otherwise, let's take the freshest state, since the current one could
                 // be outdated
-                animationStartState = previousHost.currentState.copy()
+                animationStartBounds.set(previousHost.currentBounds)
             }
             adjustAnimatorForTransition(desiredLocation, previousLocation)
-            animator.start()
+            rootView?.let {
+                // Let's delay the animation start until we finished laying out
+                animationPending = true
+                it.postOnAnimation(startAnimation)
+            }
         } else {
             cancelAnimationAndApplyDesiredState()
         }
@@ -237,24 +319,26 @@ class MediaHierarchyManager @Inject constructor(
         @MediaLocation currentLocation: Int,
         @MediaLocation previousLocation: Int
     ): Boolean {
-        if (currentLocation == LOCATION_QQS
-                && previousLocation == LOCATION_LOCKSCREEN
-                && (statusBarStateController.leaveOpenOnKeyguardHide()
-                        || statusbarState == StatusBarState.SHADE_LOCKED)) {
+        if (isCurrentlyInGuidedTransformation()) {
+            return false
+        }
+        if (currentLocation == LOCATION_QQS &&
+                previousLocation == LOCATION_LOCKSCREEN &&
+                (statusBarStateController.leaveOpenOnKeyguardHide() ||
+                        statusbarState == StatusBarState.SHADE_LOCKED)) {
             // Usually listening to the isShown is enough to determine this, but there is some
             // non-trivial reattaching logic happening that will make the view not-shown earlier
             return true
         }
-        return mediaCarousel.isShown || animator.isRunning
+        return mediaFrame.isShown || animator.isRunning || animationPending
     }
 
     private fun adjustAnimatorForTransition(desiredLocation: Int, previousLocation: Int) {
         val (animDuration, delay) = getAnimationParams(previousLocation, desiredLocation)
         animator.apply {
-            duration  = animDuration
+            duration = animDuration
             startDelay = delay
         }
-
     }
 
     private fun getAnimationParams(previousLocation: Int, desiredLocation: Int): Pair<Long, Long> {
@@ -262,8 +346,8 @@ class MediaHierarchyManager @Inject constructor(
         var delay = 0L
         if (previousLocation == LOCATION_LOCKSCREEN && desiredLocation == LOCATION_QQS) {
             // Going to the full shade, let's adjust the animation duration
-            if (statusbarState == StatusBarState.SHADE
-                    && keyguardStateController.isKeyguardFadingAway) {
+            if (statusbarState == StatusBarState.SHADE &&
+                    keyguardStateController.isKeyguardFadingAway) {
                 delay = keyguardStateController.keyguardFadingAwayDelay
             }
             animDuration = StackStateAnimator.ANIMATION_DURATION_GO_TO_FULL_SHADE.toLong()
@@ -278,7 +362,7 @@ class MediaHierarchyManager @Inject constructor(
             // Let's immediately apply the target state (which is interpolated) if there is
             // no animation running. Otherwise the animation update will already update
             // the location
-            applyState(targetState!!)
+            applyState(targetBounds)
         }
     }
 
@@ -290,23 +374,43 @@ class MediaHierarchyManager @Inject constructor(
             val progress = getTransformationProgress()
             val currentHost = getHost(desiredLocation)!!
             val previousHost = getHost(previousLocation)!!
-            val newState = currentHost.currentState
-            val previousState = previousHost.currentState
-            targetState = previousState.interpolate(newState, progress)
+            val newBounds = currentHost.currentBounds
+            val previousBounds = previousHost.currentBounds
+            targetBounds = interpolateBounds(previousBounds, newBounds, progress)
         } else {
-            targetState = getHost(desiredLocation)?.currentState
+            val bounds = getHost(desiredLocation)?.currentBounds ?: return
+            targetBounds.set(bounds)
         }
+    }
+
+    private fun interpolateBounds(
+        startBounds: Rect,
+        endBounds: Rect,
+        progress: Float,
+        result: Rect? = null
+    ): Rect {
+        val left = MathUtils.lerp(startBounds.left.toFloat(),
+                endBounds.left.toFloat(), progress).toInt()
+        val top = MathUtils.lerp(startBounds.top.toFloat(),
+                endBounds.top.toFloat(), progress).toInt()
+        val right = MathUtils.lerp(startBounds.right.toFloat(),
+                endBounds.right.toFloat(), progress).toInt()
+        val bottom = MathUtils.lerp(startBounds.bottom.toFloat(),
+                endBounds.bottom.toFloat(), progress).toInt()
+        val resultBounds = result ?: Rect()
+        resultBounds.set(left, top, right, bottom)
+        return resultBounds
     }
 
     /**
      * @return true if this transformation is guided by an external progress like a finger
      */
-    private fun isCurrentlyInGuidedTransformation() : Boolean {
+    private fun isCurrentlyInGuidedTransformation(): Boolean {
         return getTransformationProgress() >= 0
     }
 
     /**
-     * @return the current transformation progress if we're in a guided transformation and -1 
+     * @return the current transformation progress if we're in a guided transformation and -1
      * otherwise
      */
     private fun getTransformationProgress(): Float {
@@ -338,21 +442,27 @@ class MediaHierarchyManager @Inject constructor(
     private fun cancelAnimationAndApplyDesiredState() {
         animator.cancel()
         getHost(desiredLocation)?.let {
-            applyState(it.currentState)
+            applyState(it.currentBounds, immediately = true)
         }
     }
 
-    private fun applyState(state: MediaState) {
-        currentState = state.copy()
-        mediaViewManager.setCurrentState(currentState)
+    /**
+     * Apply the current state to the view, updating it's bounds and desired state
+     */
+    private fun applyState(bounds: Rect, immediately: Boolean = false) {
+        currentBounds.set(bounds)
+        val currentlyInGuidedTransformation = isCurrentlyInGuidedTransformation()
+        val startLocation = if (currentlyInGuidedTransformation) previousLocation else -1
+        val progress = if (currentlyInGuidedTransformation) getTransformationProgress() else 1.0f
+        val endLocation = desiredLocation
+        mediaViewManager.setCurrentState(startLocation, endLocation, progress, immediately)
         updateHostAttachment()
         if (currentAttachmentLocation == IN_OVERLAY) {
-            val boundsOnScreen = state.boundsOnScreen
-            mediaCarousel.setLeftTopRightBottom(
-                    boundsOnScreen.left,
-                    boundsOnScreen.top,
-                    boundsOnScreen.right,
-                    boundsOnScreen.bottom)
+            mediaFrame.setLeftTopRightBottom(
+                    currentBounds.left,
+                    currentBounds.top,
+                    currentBounds.right,
+                    currentBounds.bottom)
         }
     }
 
@@ -363,43 +473,40 @@ class MediaHierarchyManager @Inject constructor(
             currentAttachmentLocation = newLocation
 
             // Remove the carousel from the old host
-            (mediaCarousel.parent as ViewGroup?)?.removeView(mediaCarousel)
+            (mediaFrame.parent as ViewGroup?)?.removeView(mediaFrame)
 
             // Add it to the new one
             val targetHost = getHost(desiredLocation)!!.hostView
             if (inOverlay) {
-                rootOverlay!!.add(mediaCarousel)
+                rootOverlay!!.add(mediaFrame)
             } else {
-                targetHost.addView(mediaCarousel)
-                mediaViewManager.onViewReattached()
+                targetHost.addView(mediaFrame)
             }
         }
     }
 
     private fun isTransitionRunning(): Boolean {
-        return isCurrentlyInGuidedTransformation() && getTransformationProgress() != 1.0f
-                || animator.isRunning
+        return isCurrentlyInGuidedTransformation() && getTransformationProgress() != 1.0f ||
+                animator.isRunning || animationPending
     }
 
     @MediaLocation
-    private fun calculateLocation() : Int {
-        val onLockscreen = (!bypassController.bypassEnabled
-                && (statusbarState == StatusBarState.KEYGUARD
-                || statusbarState == StatusBarState.FULLSCREEN_USER_SWITCHER))
+    private fun calculateLocation(): Int {
+        if (blockLocationChanges) {
+            // Keep the current location until we're allowed to again
+            return desiredLocation
+        }
+        val onLockscreen = (!bypassController.bypassEnabled &&
+                (statusbarState == StatusBarState.KEYGUARD ||
+                        statusbarState == StatusBarState.FULLSCREEN_USER_SWITCHER))
+        val allowedOnLockscreen = notifLockscreenUserManager.shouldShowLockscreenNotifications()
         return when {
             qsExpansion > 0.0f && !onLockscreen -> LOCATION_QS
             qsExpansion > 0.4f && onLockscreen -> LOCATION_QS
-            onLockscreen -> LOCATION_LOCKSCREEN
+            onLockscreen && allowedOnLockscreen -> LOCATION_LOCKSCREEN
             else -> LOCATION_QQS
         }
     }
-
-    /**
-     * The expansion of quick settings
-     */
-    @IntDef(prefix = ["LOCATION_"], value = [LOCATION_QS, LOCATION_QQS, LOCATION_LOCKSCREEN])
-    @Retention(AnnotationRetention.SOURCE)
-    annotation class MediaLocation
 
     companion object {
         /**
@@ -423,3 +530,8 @@ class MediaHierarchyManager @Inject constructor(
         const val IN_OVERLAY = -1000
     }
 }
+
+@IntDef(prefix = ["LOCATION_"], value = [MediaHierarchyManager.LOCATION_QS,
+    MediaHierarchyManager.LOCATION_QQS, MediaHierarchyManager.LOCATION_LOCKSCREEN])
+@Retention(AnnotationRetention.SOURCE)
+annotation class MediaLocation

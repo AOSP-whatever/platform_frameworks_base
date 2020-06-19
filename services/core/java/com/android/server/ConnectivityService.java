@@ -3129,23 +3129,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
         @Override
         public void notifyDataStallSuspected(DataStallReportParcelable p) {
-            final PersistableBundle extras = new PersistableBundle();
-            switch (p.detectionMethod) {
-                case DETECTION_METHOD_DNS_EVENTS:
-                    extras.putInt(KEY_DNS_CONSECUTIVE_TIMEOUTS, p.dnsConsecutiveTimeouts);
-                    break;
-                case DETECTION_METHOD_TCP_METRICS:
-                    extras.putInt(KEY_TCP_PACKET_FAIL_RATE, p.tcpPacketFailRate);
-                    extras.putInt(KEY_TCP_METRICS_COLLECTION_PERIOD_MILLIS,
-                            p.tcpMetricsCollectionPeriodMillis);
-                    break;
-                default:
-                    log("Unknown data stall detection method, ignoring: " + p.detectionMethod);
-                    return;
-            }
-
-            proxyDataStallToConnectivityDiagnosticsHandler(
-                    p.detectionMethod, mNetId, p.timestampMillis, extras);
+            ConnectivityService.this.notifyDataStallSuspected(p, mNetId);
         }
 
         @Override
@@ -3159,17 +3143,35 @@ public class ConnectivityService extends IConnectivityManager.Stub
         }
     }
 
-    private void proxyDataStallToConnectivityDiagnosticsHandler(int detectionMethod, int netId,
-            long timestampMillis, @NonNull PersistableBundle extras) {
+    private void notifyDataStallSuspected(DataStallReportParcelable p, int netId) {
+        log("Data stall detected with methods: " + p.detectionMethod);
+
+        final PersistableBundle extras = new PersistableBundle();
+        int detectionMethod = 0;
+        if (hasDataStallDetectionMethod(p, DETECTION_METHOD_DNS_EVENTS)) {
+            extras.putInt(KEY_DNS_CONSECUTIVE_TIMEOUTS, p.dnsConsecutiveTimeouts);
+            detectionMethod |= DETECTION_METHOD_DNS_EVENTS;
+        }
+        if (hasDataStallDetectionMethod(p, DETECTION_METHOD_TCP_METRICS)) {
+            extras.putInt(KEY_TCP_PACKET_FAIL_RATE, p.tcpPacketFailRate);
+            extras.putInt(KEY_TCP_METRICS_COLLECTION_PERIOD_MILLIS,
+                    p.tcpMetricsCollectionPeriodMillis);
+            detectionMethod |= DETECTION_METHOD_TCP_METRICS;
+        }
+
         final Message msg = mConnectivityDiagnosticsHandler.obtainMessage(
-                    ConnectivityDiagnosticsHandler.EVENT_DATA_STALL_SUSPECTED,
-                    detectionMethod, netId, timestampMillis);
+                ConnectivityDiagnosticsHandler.EVENT_DATA_STALL_SUSPECTED, detectionMethod, netId,
+                p.timestampMillis);
         msg.setData(new Bundle(extras));
 
         // NetworkStateTrackerHandler currently doesn't take any actions based on data
         // stalls so send the message directly to ConnectivityDiagnosticsHandler and avoid
         // the cost of going through two handlers.
         mConnectivityDiagnosticsHandler.sendMessage(msg);
+    }
+
+    private boolean hasDataStallDetectionMethod(DataStallReportParcelable p, int detectionMethod) {
+        return (p.detectionMethod & detectionMethod) != 0;
     }
 
     private boolean networkRequiresPrivateDnsValidation(NetworkAgentInfo nai) {
@@ -7231,6 +7233,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
             networkAgent.networkCapabilities.addCapability(NET_CAPABILITY_FOREGROUND);
 
             if (!createNativeNetwork(networkAgent)) return;
+            if (networkAgent.isVPN()) {
+                // Initialize the VPN capabilities to their starting values according to the
+                // underlying networks. This will avoid a spurious callback to
+                // onCapabilitiesUpdated being sent in updateAllVpnCapabilities below as
+                // the VPN would switch from its default, blank capabilities to those
+                // that reflect the capabilities of its underlying networks.
+                updateAllVpnsCapabilities();
+            }
             networkAgent.created = true;
         }
 
@@ -8274,8 +8284,25 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 + "creators");
         }
 
-        proxyDataStallToConnectivityDiagnosticsHandler(
-                detectionMethod, network.netId, timestampMillis, extras);
+        // Instead of passing the data stall directly to the ConnectivityDiagnostics handler, treat
+        // this as a Data Stall received directly from NetworkMonitor. This requires wrapping the
+        // Data Stall information as a DataStallReportParcelable and passing to
+        // #notifyDataStallSuspected. This ensures that unknown Data Stall detection methods are
+        // still passed to ConnectivityDiagnostics (with new detection methods masked).
+        final DataStallReportParcelable p = new DataStallReportParcelable();
+        p.timestampMillis = timestampMillis;
+        p.detectionMethod = detectionMethod;
+
+        if (hasDataStallDetectionMethod(p, DETECTION_METHOD_DNS_EVENTS)) {
+            p.dnsConsecutiveTimeouts = extras.getInt(KEY_DNS_CONSECUTIVE_TIMEOUTS);
+        }
+        if (hasDataStallDetectionMethod(p, DETECTION_METHOD_TCP_METRICS)) {
+            p.tcpPacketFailRate = extras.getInt(KEY_TCP_PACKET_FAIL_RATE);
+            p.tcpMetricsCollectionPeriodMillis = extras.getInt(
+                    KEY_TCP_METRICS_COLLECTION_PERIOD_MILLIS);
+        }
+
+        notifyDataStallSuspected(p, network.netId);
     }
 
     private boolean isMobileNetwork(NetworkAgentInfo nai) {

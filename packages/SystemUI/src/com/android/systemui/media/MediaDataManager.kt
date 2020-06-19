@@ -36,6 +36,7 @@ import com.android.systemui.dagger.qualifiers.Background
 import com.android.systemui.dagger.qualifiers.Main
 import com.android.systemui.statusbar.notification.MediaNotificationProcessor
 import com.android.systemui.statusbar.notification.row.HybridGroupManager
+import com.android.systemui.util.Assert
 import com.android.systemui.util.Utils
 import java.io.IOException
 import java.util.concurrent.Executor
@@ -55,7 +56,19 @@ private const val LUMINOSITY_THRESHOLD = 0.05f
 private const val SATURATION_MULTIPLIER = 0.8f
 
 private val LOADING = MediaData(false, 0, null, null, null, null, null,
-        emptyList(), emptyList(), null, null, null)
+        emptyList(), emptyList(), null, null, null, null)
+
+fun isMediaNotification(sbn: StatusBarNotification): Boolean {
+    if (!sbn.notification.hasMediaSession()) {
+        return false
+    }
+    val notificationStyle = sbn.notification.notificationStyle
+    if (Notification.DecoratedMediaCustomViewStyle::class.java.equals(notificationStyle) ||
+            Notification.MediaStyle::class.java.equals(notificationStyle)) {
+        return true
+    }
+    return false
+}
 
 /**
  * A class that facilitates management and loading of Media Data, ready for binding.
@@ -65,14 +78,15 @@ class MediaDataManager @Inject constructor(
     private val context: Context,
     private val mediaControllerFactory: MediaControllerFactory,
     @Background private val backgroundExecutor: Executor,
-    @Main private val foregroundExcecutor: Executor
+    @Main private val foregroundExecutor: Executor
 ) {
 
     private val listeners: MutableSet<Listener> = mutableSetOf()
     private val mediaEntries: LinkedHashMap<String, MediaData> = LinkedHashMap()
 
     fun onNotificationAdded(key: String, sbn: StatusBarNotification) {
-        if (isMediaNotification(sbn)) {
+        if (Utils.useQsMediaPlayer(context) && isMediaNotification(sbn)) {
+            Assert.isMainThread()
             if (!mediaEntries.containsKey(key)) {
                 mediaEntries.put(key, LOADING)
             }
@@ -187,12 +201,17 @@ class MediaDataManager @Inject constructor(
         val actionIcons: MutableList<MediaAction> = ArrayList()
         val actions = notif.actions
         val actionsToShowCollapsed = notif.extras.getIntArray(
-                Notification.EXTRA_COMPACT_ACTIONS)?.toList() ?: emptyList()
+                Notification.EXTRA_COMPACT_ACTIONS)?.toMutableList() ?: mutableListOf<Int>()
         // TODO: b/153736623 look into creating actions when this isn't a media style notification
 
         val packageContext: Context = sbn.getPackageContext(context)
         if (actions != null) {
-            for (action in actions) {
+            for ((index, action) in actions.withIndex()) {
+                if (action.getIcon() == null) {
+                    Log.i(TAG, "No icon for action $index ${action.title}")
+                    actionsToShowCollapsed.remove(index)
+                    continue
+                }
                 val mediaAction = MediaAction(
                         action.getIcon().loadDrawable(packageContext),
                         action.actionIntent,
@@ -201,10 +220,10 @@ class MediaDataManager @Inject constructor(
             }
         }
 
-        foregroundExcecutor.execute {
+        foregroundExecutor.execute {
             onMediaDataLoaded(key, MediaData(true, bgColor, app, smallIconDrawable, artist, song,
                     artWorkIcon, actionIcons, actionsToShowCollapsed, sbn.packageName, token,
-                    notif.contentIntent))
+                    notif.contentIntent, null))
         }
     }
 
@@ -252,43 +271,32 @@ class MediaDataManager @Inject constructor(
     }
 
     fun onMediaDataLoaded(key: String, data: MediaData) {
+        Assert.isMainThread()
         if (mediaEntries.containsKey(key)) {
             // Otherwise this was removed already
             mediaEntries.put(key, data)
-            listeners.forEach {
+            val listenersCopy = listeners.toSet()
+            listenersCopy.forEach {
                 it.onMediaDataLoaded(key, data)
             }
         }
     }
 
     fun onNotificationRemoved(key: String) {
+        Assert.isMainThread()
         val removed = mediaEntries.remove(key)
         if (removed != null) {
-            listeners.forEach {
+            val listenersCopy = listeners.toSet()
+            listenersCopy.forEach {
                 it.onMediaDataRemoved(key)
             }
         }
     }
 
-    private fun isMediaNotification(sbn: StatusBarNotification): Boolean {
-        if (!Utils.useQsMediaPlayer(context)) {
-            return false
-        }
-        if (!sbn.notification.hasMediaSession()) {
-            return false
-        }
-        val notificationStyle = sbn.notification.notificationStyle
-        if (Notification.DecoratedMediaCustomViewStyle::class.java.equals(notificationStyle) ||
-                Notification.MediaStyle::class.java.equals(notificationStyle)) {
-            return true
-        }
-        return false
-    }
-
     /**
      * Are there any media notifications active?
      */
-    fun hasActiveMedia() = mediaEntries.size > 0
+    fun hasActiveMedia() = mediaEntries.isNotEmpty()
 
     fun hasAnyMedia(): Boolean {
         // TODO: implement this when we implemented resumption

@@ -16,6 +16,7 @@
 package com.android.systemui.statusbar;
 
 import static com.android.systemui.statusbar.StatusBarState.KEYGUARD;
+import static com.android.systemui.statusbar.notification.NotificationEntryManager.UNDEFINED_DISMISS_REASON;
 import static com.android.systemui.statusbar.phone.StatusBar.DEBUG_MEDIA_FAKE_ARTWORK;
 import static com.android.systemui.statusbar.phone.StatusBar.ENABLE_LOCKSCREEN_WALLPAPER;
 import static com.android.systemui.statusbar.phone.StatusBar.SHOW_LOCKSCREEN_MEDIA_ARTWORK;
@@ -35,6 +36,7 @@ import android.media.session.MediaSession;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.AsyncTask;
+import android.os.SystemProperties;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.provider.DeviceConfig;
@@ -44,8 +46,6 @@ import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 
-import androidx.annotation.NonNull;
-
 import com.android.internal.config.sysui.SystemUiDeviceConfigFlags;
 import com.android.internal.statusbar.NotificationVisibility;
 import com.android.systemui.Dependency;
@@ -53,8 +53,8 @@ import com.android.systemui.Dumpable;
 import com.android.systemui.Interpolators;
 import com.android.systemui.colorextraction.SysuiColorExtractor;
 import com.android.systemui.dagger.qualifiers.Main;
-import com.android.systemui.media.MediaData;
 import com.android.systemui.media.MediaDataManager;
+import com.android.systemui.media.MediaDeviceManager;
 import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.statusbar.dagger.StatusBarModule;
 import com.android.systemui.statusbar.notification.NotificationEntryListener;
@@ -70,6 +70,7 @@ import com.android.systemui.statusbar.phone.StatusBar;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
 import com.android.systemui.util.DeviceConfigProxy;
 import com.android.systemui.util.Utils;
+import com.android.systemui.util.concurrency.DelayableExecutor;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -79,7 +80,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 import dagger.Lazy;
 
@@ -90,6 +91,8 @@ import dagger.Lazy;
 public class NotificationMediaManager implements Dumpable {
     private static final String TAG = "NotificationMediaManager";
     public static final boolean DEBUG_MEDIA = false;
+    private static final long PAUSED_MEDIA_TIMEOUT = SystemProperties
+            .getLong("debug.sysui.media_timeout", TimeUnit.MINUTES.toMillis(10));
 
     private final StatusBarStateController mStatusBarStateController
             = Dependency.get(StatusBarStateController.class);
@@ -106,6 +109,7 @@ public class NotificationMediaManager implements Dumpable {
     }
 
     private final NotificationEntryManager mEntryManager;
+    private final MediaDataManager mMediaDataManager;
 
     @Nullable
     private Lazy<NotificationShadeWindowController> mNotificationShadeWindowController;
@@ -117,7 +121,7 @@ public class NotificationMediaManager implements Dumpable {
     @Nullable
     private LockscreenWallpaper mLockscreenWallpaper;
 
-    private final Executor mMainExecutor;
+    private final DelayableExecutor mMainExecutor;
 
     private final Context mContext;
     private final MediaSessionManager mMediaSessionManager;
@@ -130,6 +134,7 @@ public class NotificationMediaManager implements Dumpable {
     private MediaController mMediaController;
     private String mMediaNotificationKey;
     private MediaMetadata mMediaMetadata;
+    private Runnable mMediaTimeoutCancellation;
 
     private BackDropView mBackdrop;
     private ImageView mBackdropFront;
@@ -159,11 +164,47 @@ public class NotificationMediaManager implements Dumpable {
             if (DEBUG_MEDIA) {
                 Log.v(TAG, "DEBUG_MEDIA: onPlaybackStateChanged: " + state);
             }
+            if (mMediaTimeoutCancellation != null) {
+                if (DEBUG_MEDIA) {
+                    Log.v(TAG, "DEBUG_MEDIA: media timeout cancelled");
+                }
+                mMediaTimeoutCancellation.run();
+                mMediaTimeoutCancellation = null;
+            }
             if (state != null) {
                 if (!isPlaybackActive(state.getState())) {
                     clearCurrentMediaNotification();
                 }
                 findAndUpdateMediaNotifications();
+                scheduleMediaTimeout(state);
+            }
+        }
+
+        private void scheduleMediaTimeout(PlaybackState state) {
+            final NotificationEntry entry;
+            synchronized (mEntryManager) {
+                entry = mEntryManager.getActiveNotificationUnfiltered(mMediaNotificationKey);
+            }
+            if (entry != null) {
+                if (!isPlayingState(state.getState())) {
+                    if (DEBUG_MEDIA) {
+                        Log.v(TAG, "DEBUG_MEDIA: schedule timeout for "
+                                + mMediaNotificationKey);
+                    }
+                    mMediaTimeoutCancellation = mMainExecutor.executeDelayed(() -> {
+                        synchronized (mEntryManager) {
+                            if (DEBUG_MEDIA) {
+                                Log.v(TAG, "DEBUG_MEDIA: execute timeout for "
+                                        + mMediaNotificationKey);
+                            }
+                            if (mMediaNotificationKey == null) {
+                                return;
+                            }
+                            mEntryManager.removeNotification(mMediaNotificationKey, null,
+                                    UNDEFINED_DISMISS_REASON);
+                        }
+                    }, PAUSED_MEDIA_TIMEOUT);
+                }
             }
         }
 
@@ -189,9 +230,10 @@ public class NotificationMediaManager implements Dumpable {
             NotificationEntryManager notificationEntryManager,
             MediaArtworkProcessor mediaArtworkProcessor,
             KeyguardBypassController keyguardBypassController,
-            @Main Executor mainExecutor,
+            @Main DelayableExecutor mainExecutor,
             DeviceConfigProxy deviceConfig,
-            MediaDataManager mediaDataManager) {
+            MediaDataManager mediaDataManager,
+            MediaDeviceManager mediaDeviceManager) {
         mContext = context;
         mMediaArtworkProcessor = mediaArtworkProcessor;
         mKeyguardBypassController = keyguardBypassController;
@@ -205,17 +247,20 @@ public class NotificationMediaManager implements Dumpable {
         mNotificationShadeWindowController = notificationShadeWindowController;
         mEntryManager = notificationEntryManager;
         mMainExecutor = mainExecutor;
+        mMediaDataManager = mediaDataManager;
 
         notificationEntryManager.addNotificationEntryListener(new NotificationEntryListener() {
 
             @Override
             public void onPendingEntryAdded(NotificationEntry entry) {
                 mediaDataManager.onNotificationAdded(entry.getKey(), entry.getSbn());
+                mediaDeviceManager.onNotificationAdded(entry.getKey(), entry.getSbn());
             }
 
             @Override
             public void onPreEntryUpdated(NotificationEntry entry) {
                 mediaDataManager.onNotificationAdded(entry.getKey(), entry.getSbn());
+                mediaDeviceManager.onNotificationAdded(entry.getKey(), entry.getSbn());
             }
 
             @Override
@@ -236,6 +281,7 @@ public class NotificationMediaManager implements Dumpable {
                     int reason) {
                 onNotificationRemoved(entry.getKey());
                 mediaDataManager.onNotificationRemoved(entry.getKey());
+                mediaDeviceManager.onNotificationRemoved(entry.getKey());
             }
         });
 
@@ -342,21 +388,18 @@ public class NotificationMediaManager implements Dumpable {
                             UserHandle.USER_ALL);
 
                     for (MediaController aController : sessions) {
-                        if (PlaybackState.STATE_PLAYING ==
-                                getMediaControllerPlaybackState(aController)) {
-                            // now to see if we have one like this
-                            final String pkg = aController.getPackageName();
+                        // now to see if we have one like this
+                        final String pkg = aController.getPackageName();
 
-                            for (NotificationEntry entry : allNotifications) {
-                                if (entry.getSbn().getPackageName().equals(pkg)) {
-                                    if (DEBUG_MEDIA) {
-                                        Log.v(TAG, "DEBUG_MEDIA: found controller matching "
-                                                + entry.getSbn().getKey());
-                                    }
-                                    controller = aController;
-                                    mediaNotification = entry;
-                                    break;
+                        for (NotificationEntry entry : allNotifications) {
+                            if (entry.getSbn().getPackageName().equals(pkg)) {
+                                if (DEBUG_MEDIA) {
+                                    Log.v(TAG, "DEBUG_MEDIA: found controller matching "
+                                            + entry.getSbn().getKey());
                                 }
+                                controller = aController;
+                                mediaNotification = entry;
+                                break;
                             }
                         }
                     }

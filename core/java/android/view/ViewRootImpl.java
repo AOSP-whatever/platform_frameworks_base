@@ -1978,6 +1978,7 @@ public final class ViewRootImpl implements ViewParent,
                     (mCompatibleVisibilityInfo.globalVisibility & ~View.SYSTEM_UI_FLAG_LOW_PROFILE)
                             | (mAttachInfo.mSystemUiVisibility & View.SYSTEM_UI_FLAG_LOW_PROFILE);
             if (mDispatchedSystemUiVisibility != mCompatibleVisibilityInfo.globalVisibility) {
+                mHandler.removeMessages(MSG_DISPATCH_SYSTEM_UI_VISIBILITY);
                 mHandler.sendMessage(mHandler.obtainMessage(
                         MSG_DISPATCH_SYSTEM_UI_VISIBILITY, mCompatibleVisibilityInfo));
             }
@@ -2032,8 +2033,10 @@ public final class ViewRootImpl implements ViewParent,
             }
         } else {
             info.globalVisibility |= systemUiFlag;
+            info.localChanges &= ~systemUiFlag;
         }
         if (mDispatchedSystemUiVisibility != info.globalVisibility) {
+            mHandler.removeMessages(MSG_DISPATCH_SYSTEM_UI_VISIBILITY);
             mHandler.sendMessage(mHandler.obtainMessage(MSG_DISPATCH_SYSTEM_UI_VISIBILITY, info));
         }
     }
@@ -4988,6 +4991,11 @@ public final class ViewRootImpl implements ViewParent,
                     break;
                 }
                 case MSG_SHOW_INSETS: {
+                    if (mView == null) {
+                        Log.e(TAG,
+                                String.format("Calling showInsets(%d,%b) on window that no longer"
+                                        + " has views.", msg.arg1, msg.arg2 == 1));
+                    }
                     mInsetsController.show(msg.arg1, msg.arg2 == 1);
                     break;
                 }

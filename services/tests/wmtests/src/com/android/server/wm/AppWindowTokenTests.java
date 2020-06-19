@@ -35,6 +35,7 @@ import static android.view.WindowManager.TRANSIT_ACTIVITY_OPEN;
 
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.doCallRealMethod;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.doReturn;
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mock;
 import static com.android.server.wm.WindowStateAnimator.STACK_CLIP_AFTER_ANIM;
@@ -47,11 +48,13 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 
 import android.content.res.Configuration;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.platform.test.annotations.Presubmit;
 import android.view.IWindowManager;
@@ -389,6 +392,46 @@ public class AppWindowTokenTests extends WindowTestsBase {
                 onAnimationFinishedCallback));
     }
 
+    @Test
+    public void testTransferStartingWindowFromFinishingActivity() {
+        mActivity.addStartingWindow(mPackageName, android.R.style.Theme, null /* compatInfo */,
+                "Test", 0 /* labelRes */, 0 /* icon */, 0 /* logo */, 0 /* windowFlags */,
+                null /* transferFrom */, true /* newTask */, true /* taskSwitch */,
+                false /* processRunning */, false /* allowTaskSnapshot */,
+                false /* activityCreate */);
+        waitUntilHandlersIdle();
+        assertHasStartingWindow(mActivity);
+        mActivity.mStartingWindowState = ActivityRecord.STARTING_WINDOW_SHOWN;
+
+        doCallRealMethod().when(mStack).startActivityLocked(
+                any(), any(), anyBoolean(), anyBoolean(), any());
+        // Make mVisibleSetFromTransferredStartingWindow true.
+        final ActivityRecord middle = new ActivityTestsBase.ActivityBuilder(mWm.mAtmService)
+                .setTask(mTask).build();
+        mStack.startActivityLocked(middle, null /* focusedTopActivity */,
+                false /* newTask */, false /* keepCurTransition */, null /* options */);
+        middle.makeFinishingLocked();
+
+        assertNull(mActivity.startingWindow);
+        assertHasStartingWindow(middle);
+
+        final ActivityRecord top = new ActivityTestsBase.ActivityBuilder(mWm.mAtmService)
+                .setTask(mTask).build();
+        // Expect the visibility should be updated to true when transferring starting window from
+        // a visible activity.
+        top.setVisible(false);
+        // The finishing middle should be able to transfer starting window to top.
+        mStack.startActivityLocked(top, null /* focusedTopActivity */,
+                false /* newTask */, false /* keepCurTransition */, null /* options */);
+
+        assertNull(middle.startingWindow);
+        assertHasStartingWindow(top);
+        assertTrue(top.isVisible());
+        // The activity was visible by mVisibleSetFromTransferredStartingWindow, so after its
+        // starting window is transferred, it should restore to invisible.
+        assertFalse(middle.isVisible());
+    }
+
     private ActivityRecord createIsolatedTestActivityRecord() {
         final ActivityStack taskStack = createTaskStackOnDisplay(mDisplayContent);
         final Task task = createTaskInStack(taskStack, 0 /* userId */);
@@ -432,20 +475,35 @@ public class AppWindowTokenTests extends WindowTestsBase {
         removeGlobalMinSizeRestriction();
         final Rect stackBounds = new Rect(0, 0, 1000, 600);
         final Rect taskBounds = new Rect(100, 400, 600, 800);
-        mStack.setBounds(stackBounds);
-        mTask.setBounds(taskBounds);
+        // Set the bounds and windowing mode to window configuration directly, otherwise the
+        // testing setups may be discarded by configuration resolving.
+        mStack.getWindowConfiguration().setBounds(stackBounds);
+        mTask.getWindowConfiguration().setBounds(taskBounds);
+        mActivity.getWindowConfiguration().setBounds(taskBounds);
 
         // Check that anim bounds for freeform window match task bounds
-        mTask.setWindowingMode(WINDOWING_MODE_FREEFORM);
+        mTask.getWindowConfiguration().setWindowingMode(WINDOWING_MODE_FREEFORM);
         assertEquals(mTask.getBounds(), mActivity.getAnimationBounds(STACK_CLIP_NONE));
 
         // STACK_CLIP_AFTER_ANIM should use task bounds since they will be clipped by
         // bounds animation layer.
-        mTask.setWindowingMode(WINDOWING_MODE_FULLSCREEN);
+        mTask.getWindowConfiguration().setWindowingMode(WINDOWING_MODE_FULLSCREEN);
         assertEquals(mTask.getBounds(), mActivity.getAnimationBounds(STACK_CLIP_AFTER_ANIM));
 
+        // Even the activity is smaller than task and it is not aligned to the top-left corner of
+        // task, the animation bounds the same as task and position should be zero because in real
+        // case the letterbox will fill the remaining area in task.
+        final Rect halfBounds = new Rect(taskBounds);
+        halfBounds.scale(0.5f);
+        mActivity.getWindowConfiguration().setBounds(halfBounds);
+        final Point animationPosition = new Point();
+        mActivity.getAnimationPosition(animationPosition);
+
+        assertEquals(taskBounds, mActivity.getAnimationBounds(STACK_CLIP_AFTER_ANIM));
+        assertEquals(new Point(0, 0), animationPosition);
+
         // STACK_CLIP_BEFORE_ANIM should use stack bounds since it won't be clipped later.
-        mTask.setWindowingMode(WINDOWING_MODE_SPLIT_SCREEN_PRIMARY);
+        mTask.getWindowConfiguration().setWindowingMode(WINDOWING_MODE_SPLIT_SCREEN_PRIMARY);
         assertEquals(mStack.getBounds(), mActivity.getAnimationBounds(STACK_CLIP_BEFORE_ANIM));
     }
 

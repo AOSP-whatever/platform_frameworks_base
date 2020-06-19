@@ -45,6 +45,21 @@ public class PageIndicator extends ViewGroup {
     }
 
     public void setNumPages(int numPages) {
+        if (numPages == getChildCount()) {
+            return;
+        }
+        TypedArray array = getContext().obtainStyledAttributes(
+                new int[]{android.R.attr.colorControlActivated});
+        int color = array.getColor(0, 0);
+        array.recycle();
+        setNumPages(numPages, color);
+    }
+
+    /** Oveload of setNumPages that allows the indicator color to be specified.*/
+    public void setNumPages(int numPages, int color) {
+        if (numPages == getChildCount()) {
+            return;
+        }
         setVisibility(numPages > 1 ? View.VISIBLE : View.GONE);
         if (mAnimating) {
             Log.w(TAG, "setNumPages during animation");
@@ -52,10 +67,6 @@ public class PageIndicator extends ViewGroup {
         while (numPages < getChildCount()) {
             removeViewAt(getChildCount() - 1);
         }
-        TypedArray array = getContext().obtainStyledAttributes(
-                new int[]{android.R.attr.colorControlActivated});
-        int color = array.getColor(0, 0);
-        array.recycle();
         while (numPages > getChildCount()) {
             ImageView v = new ImageView(mContext);
             v.setImageResource(R.drawable.minor_a_b);

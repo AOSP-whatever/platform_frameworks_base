@@ -117,13 +117,30 @@ final class AutofillInlineSessionController {
     }
 
     /**
-     * Permanently delete the current inline fill UI. Notify the IME to hide the suggestions as
-     * well.
+     * Disables prefix/regex based filtering. Other filtering rules (see {@link
+     * android.service.autofill.Dataset}) still apply.
      */
     @GuardedBy("mLock")
-    boolean deleteInlineFillUiLocked(@NonNull AutofillId autofillId) {
+    void disableFilterMatching(@NonNull AutofillId autofillId) {
+        if (mInlineFillUi != null && mInlineFillUi.getAutofillId().equals(autofillId)) {
+            mInlineFillUi.disableFilterMatching();
+        }
+    }
+
+    /**
+     * Clear the locally cached inline fill UI, but don't clear the suggestion in the IME.
+     *
+     * <p>This is called to invalid the locally cached inline suggestions so we don't resend them
+     * to the IME, while assuming that the IME will clean up suggestion on their own when the input
+     * connection is finished. We don't send an empty response to IME so that it doesn't cause UI
+     * flicker on the IME side if it arrives before the input view is finished on the IME.
+     */
+    @GuardedBy("mLock")
+    void resetInlineFillUiLocked() {
         mInlineFillUi = null;
-        return hideInlineSuggestionsUiLocked(autofillId);
+        if (mSession != null) {
+            mSession.resetInlineFillUiLocked();
+        }
     }
 
     /**

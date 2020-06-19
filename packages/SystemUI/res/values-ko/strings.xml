@@ -77,6 +77,9 @@
     <string name="compat_mode_on" msgid="4963711187149440884">"전체화면 모드로 확대"</string>
     <string name="compat_mode_off" msgid="7682459748279487945">"전체화면 모드로 확대"</string>
     <string name="global_action_screenshot" msgid="2760267567509131654">"스크린샷"</string>
+    <string name="global_action_lock_message" product="default" msgid="4466026255205186456">"더 많은 옵션을 확인하려면 휴대전화를 잠금 해제하세요."</string>
+    <string name="global_action_lock_message" product="tablet" msgid="7621167597240332986">"더 많은 옵션을 확인하려면 태블릿을 잠금 해제하세요."</string>
+    <string name="global_action_lock_message" product="device" msgid="538790401275363781">"더 많은 옵션을 확인하려면 기기를 잠금 해제하세요."</string>
     <string name="remote_input_image_insertion_text" msgid="4850791636452521123">"이미지 보냄"</string>
     <string name="screenshot_saving_ticker" msgid="6519186952674544916">"캡쳐화면 저장 중..."</string>
     <string name="screenshot_saving_title" msgid="2298349784913287333">"캡쳐화면 저장 중..."</string>
@@ -511,8 +514,8 @@
     <string name="manage_notifications_text" msgid="6885645344647733116">"관리"</string>
     <string name="manage_notifications_history_text" msgid="57055985396576230">"기록"</string>
     <string name="notification_section_header_incoming" msgid="5295312809341711367">"최근 알림"</string>
-    <string name="notification_section_header_gentle" msgid="3044910806569985386">"무음 알림"</string>
-    <string name="notification_section_header_alerting" msgid="3168140660646863240">"소리 알림"</string>
+    <string name="notification_section_header_gentle" msgid="6804099527336337197">"무음"</string>
+    <string name="notification_section_header_alerting" msgid="5581175033680477651">"알림"</string>
     <string name="notification_section_header_conversations" msgid="821834744538345661">"대화"</string>
     <string name="accessibility_notification_section_header_gentle_clear_all" msgid="6490207897764933919">"무음 알림 모두 삭제"</string>
     <string name="dnd_suppressing_shade_text" msgid="5588252250634464042">"방해 금지 모드로 알림이 일시중지됨"</string>
@@ -592,19 +595,29 @@
     <string name="volume_odi_captions_hint_enable" msgid="2073091194012843195">"사용"</string>
     <string name="volume_odi_captions_hint_disable" msgid="2518846326748183407">"사용 중지"</string>
     <string name="accessibility_output_chooser" msgid="7807898688967194183">"출력 기기 전환"</string>
-    <string name="screen_pinning_title" msgid="7357611095909618178">"화면 고정됨"</string>
+    <!-- no translation found for screen_pinning_title (9058007390337841305) -->
+    <skip />
     <string name="screen_pinning_description" msgid="8699395373875667743">"고정 해제할 때까지 계속 표시됩니다. 고정 해제하려면 뒤로 및 최근 사용을 길게 터치하세요."</string>
     <string name="screen_pinning_description_recents_invisible" msgid="4564466648700390037">"고정 해제할 때까지 계속 표시됩니다. 고정 해제하려면 뒤로 및 홈을 길게 터치하세요."</string>
     <string name="screen_pinning_description_gestural" msgid="7246323931831232068">"고정 해제할 때까지 계속 표시됩니다. 고정 해제하려면 위로 스와이프한 다음 탭한 상태를 유지하세요."</string>
     <string name="screen_pinning_description_accessible" msgid="7386449191953535332">"고정 해제할 때까지 계속 표시됩니다. 고정 해제하려면 최근 사용을 길게 터치하세요."</string>
     <string name="screen_pinning_description_recents_invisible_accessible" msgid="2857071808674481986">"고정 해제할 때까지 계속 표시됩니다. 고정 해제하려면 홈을 길게 터치하세요."</string>
-    <string name="screen_pinning_toast" msgid="2083944237147005811">"이 화면을 고정 해제하려면 뒤로 및 최근 사용 버튼을 길게 터치하세요."</string>
-    <string name="screen_pinning_toast_recents_invisible" msgid="6343770487795352573">"이 화면을 고정 해제하려면 뒤로 및 홈 버튼을 길게 터치하세요."</string>
-    <string name="screen_pinning_toast_gesture_nav" msgid="2884536903398445645">"이 화면을 고정 해제하려면 위로 스와이프하고 유지하세요."</string>
+    <!-- no translation found for screen_pinning_exposes_personal_data (8189852022981524789) -->
+    <skip />
+    <!-- no translation found for screen_pinning_can_open_other_apps (7529756813231421455) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast (8177286912533744328) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast_recents_invisible (6850978077443052594) -->
+    <skip />
+    <!-- no translation found for screen_pinning_toast_gesture_nav (170699893395336705) -->
+    <skip />
     <string name="screen_pinning_positive" msgid="3285785989665266984">"확인"</string>
     <string name="screen_pinning_negative" msgid="6882816864569211666">"거부"</string>
-    <string name="screen_pinning_start" msgid="5695091877402422575">"화면 고정됨"</string>
-    <string name="screen_pinning_exit" msgid="5114993350662745840">"화면 고정 해제됨"</string>
+    <!-- no translation found for screen_pinning_start (7483998671383371313) -->
+    <skip />
+    <!-- no translation found for screen_pinning_exit (4553787518387346893) -->
+    <skip />
     <string name="quick_settings_reset_confirmation_title" msgid="463533331480997595">"<xliff:g id="TILE_LABEL">%1$s</xliff:g>을(를) 숨기시겠습니까?"</string>
     <string name="quick_settings_reset_confirmation_message" msgid="2320586180785674186">"다음번에 설정에서 사용 설정하면 다시 표시됩니다."</string>
     <string name="quick_settings_reset_confirmation_button" msgid="3341477479055016776">"숨기기"</string>
@@ -707,13 +720,14 @@
     <string name="inline_turn_off_notifications" msgid="8543989584403106071">"알림 사용 중지"</string>
     <string name="inline_keep_showing_app" msgid="4393429060390649757">"이 앱의 알림을 계속 표시하시겠습니까?"</string>
     <string name="notification_silence_title" msgid="8608090968400832335">"무음"</string>
-    <string name="notification_alert_title" msgid="7629202599338071971">"주의를 끄는 알림"</string>
+    <string name="notification_alert_title" msgid="3656229781017543655">"기본값"</string>
     <string name="notification_bubble_title" msgid="8330481035191903164">"버블"</string>
-    <string name="notification_channel_summary_low" msgid="7300447764759926720">"소리나 진동 없이 집중할 수 있도록 도와줍니다"</string>
-    <string name="notification_channel_summary_default" msgid="3539949463907902037">"소리나 진동으로 알립니다."</string>
-    <string name="notification_channel_summary_default_with_bubbles" msgid="6298026344552480458">"소리나 진동으로 알립니다. 기본적으로 <xliff:g id="APP_NAME">%1$s</xliff:g>의 대화는 대화창으로 표시됩니다."</string>
+    <string name="notification_channel_summary_low" msgid="4860617986908931158">"소리 또는 진동 없음"</string>
+    <string name="notification_conversation_summary_low" msgid="1734433426085468009">"소리나 진동이 울리지 않으며 대화 섹션 하단에 표시됨"</string>
+    <string name="notification_channel_summary_default" msgid="3282930979307248890">"휴대전화 설정에 따라 벨소리나 진동이 울릴 수 있음"</string>
+    <string name="notification_channel_summary_default_with_bubbles" msgid="1782419896613644568">"휴대전화 설정에 따라 벨소리나 진동이 울릴 수 있습니다. 기본적으로 <xliff:g id="APP_NAME">%1$s</xliff:g>의 대화는 대화창으로 표시됩니다."</string>
     <string name="notification_channel_summary_bubble" msgid="7235935211580860537">"이 콘텐츠로 연결되는 플로팅 바로가기로 사용자의 주의를 끕니다."</string>
-    <string name="notification_channel_summary_priority" msgid="7415770044553264622">"대화 섹션 상단에 대화창으로 표시"</string>
+    <string name="notification_channel_summary_priority" msgid="7952654515769021553">"대화 섹션 상단의 플로팅 대화창 또는 잠금 화면의 프로필 사진으로 표시됩니다."</string>
     <string name="notification_conversation_channel_settings" msgid="2409977688430606835">"설정"</string>
     <string name="notification_priority_title" msgid="2079708866333537093">"우선순위"</string>
     <string name="no_shortcut" msgid="7176375126961212514">"<xliff:g id="APP_NAME">%1$s</xliff:g>에서는 대화 관련 설정을 지원하지 않습니다."</string>
@@ -1013,7 +1027,7 @@
     <string name="priority_onboarding_show_at_top_text" msgid="1678400241025513541">"대화 섹션의 상단에 표시"</string>
     <string name="priority_onboarding_show_avatar_text" msgid="5756291381124091508">"잠금 화면에서 프로필 사진 표시"</string>
     <string name="priority_onboarding_appear_as_bubble_text" msgid="4227039772250263122">"앱 상단에서 플로팅 대화창으로 표시"</string>
-    <string name="priority_onboarding_ignores_dnd_text" msgid="2918952762719600529">"방해 금지 모드 제외"</string>
+    <string name="priority_onboarding_ignores_dnd_text" msgid="2918952762719600529">"방해 금지 모드 무시"</string>
     <string name="priority_onboarding_done_button_title" msgid="4569550984286506007">"확인"</string>
     <string name="magnification_overlay_title" msgid="6584179429612427958">"확대 오버레이 창"</string>
     <string name="magnification_window_title" msgid="4863914360847258333">"확대 창"</string>
@@ -1027,6 +1041,13 @@
       <item quantity="other">제어 기능 <xliff:g id="NUMBER_1">%s</xliff:g>개가 추가되었습니다.</item>
       <item quantity="one">제어 기능 <xliff:g id="NUMBER_0">%s</xliff:g>개가 추가되었습니다.</item>
     </plurals>
+    <string name="controls_removed" msgid="3731789252222856959">"삭제됨"</string>
+    <string name="accessibility_control_favorite" msgid="8694362691985545985">"즐겨찾기에 추가됨"</string>
+    <string name="accessibility_control_favorite_position" msgid="54220258048929221">"즐겨찾기에 추가됨, 위치 <xliff:g id="NUMBER">%d</xliff:g>"</string>
+    <string name="accessibility_control_not_favorite" msgid="1291760269563092359">"즐겨찾기에서 삭제됨"</string>
+    <string name="accessibility_control_change_favorite" msgid="2943178027582253261">"즐겨찾기"</string>
+    <string name="accessibility_control_change_unfavorite" msgid="6997408061750740327">"즐겨찾기에서 삭제"</string>
+    <string name="accessibility_control_move" msgid="8980344493796647792">"다음 위치로 이동: <xliff:g id="NUMBER">%d</xliff:g>"</string>
     <string name="controls_favorite_default_title" msgid="967742178688938137">"제어"</string>
     <string name="controls_favorite_subtitle" msgid="6604402232298443956">"전원 메뉴에서 액세스할 컨트롤을 선택합니다."</string>
     <string name="controls_favorite_rearrange" msgid="5616952398043063519">"길게 누르고 드래그하여 컨트롤 재정렬"</string>
