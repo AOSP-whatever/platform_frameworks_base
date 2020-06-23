@@ -26,6 +26,7 @@ import com.android.systemui.plugins.qs.QSTile;
 import com.android.systemui.plugins.qs.QSTileView;
 import com.android.systemui.qs.QSHost;
 import com.android.systemui.qs.external.CustomTile;
+import com.android.systemui.qs.tiles.RebootTile;
 import com.android.systemui.qs.tiles.AirplaneModeTile;
 import com.android.systemui.qs.tiles.BatterySaverTile;
 import com.android.systemui.qs.tiles.BluetoothTile;
@@ -69,6 +70,7 @@ public class QSFactoryImpl implements QSFactory {
     private final Provider<DndTile> mDndTileProvider;
     private final Provider<ColorInversionTile> mColorInversionTileProvider;
     private final Provider<AirplaneModeTile> mAirplaneModeTileProvider;
+    private final Provider<RebootTile> mRebootTileProvider;
     private final Provider<WorkModeTile> mWorkModeTileProvider;
     private final Provider<RotationLockTile> mRotationLockTileProvider;
     private final Provider<FlashlightTile> mFlashlightTileProvider;
@@ -98,6 +100,7 @@ public class QSFactoryImpl implements QSFactory {
             Provider<CellularTile> cellularTileProvider,
             Provider<DndTile> dndTileProvider,
             Provider<ColorInversionTile> colorInversionTileProvider,
+            Provider<RebootTile> rebootTileProvider,
             Provider<AirplaneModeTile> airplaneModeTileProvider,
             Provider<WorkModeTile> workModeTileProvider,
             Provider<RotationLockTile> rotationLockTileProvider,
@@ -125,6 +128,7 @@ public class QSFactoryImpl implements QSFactory {
         mDndTileProvider = dndTileProvider;
         mColorInversionTileProvider = colorInversionTileProvider;
         mAirplaneModeTileProvider = airplaneModeTileProvider;
+        mRebootTileProvider = rebootTileProvider;
         mWorkModeTileProvider = workModeTileProvider;
         mRotationLockTileProvider = rotationLockTileProvider;
         mFlashlightTileProvider = flashlightTileProvider;
@@ -169,6 +173,8 @@ public class QSFactoryImpl implements QSFactory {
                 return mColorInversionTileProvider.get();
             case "airplane":
                 return mAirplaneModeTileProvider.get();
+            case "reboot":
+                return mRebootTileProvider.get();
             case "work":
                 return mWorkModeTileProvider.get();
             case "rotation":
