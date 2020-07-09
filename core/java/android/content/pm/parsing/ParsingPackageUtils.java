@@ -1912,6 +1912,7 @@ public class ParsingPackageUtils {
         // every activity info has had a chance to set it from its attributes.
         setMaxAspectRatio(pkg);
         setMinAspectRatio(pkg);
+        setSupportsSizeChanges(pkg);
 
         pkg.setHasDomainUrls(hasDomainURLs(pkg));
 
@@ -2366,6 +2367,23 @@ public class ParsingPackageUtils {
         }
     }
 
+    private void setSupportsSizeChanges(ParsingPackage pkg) {
+        final Bundle appMetaData = pkg.getMetaData();
+        final boolean supportsSizeChanges = appMetaData != null
+                && appMetaData.getBoolean(PackageParser.METADATA_SUPPORTS_SIZE_CHANGES, false);
+
+        List<ParsedActivity> activities = pkg.getActivities();
+        int activitiesSize = activities.size();
+        for (int index = 0; index < activitiesSize; index++) {
+            ParsedActivity activity = activities.get(index);
+            if (supportsSizeChanges || (activity.getMetaData() != null
+                    && activity.getMetaData().getBoolean(
+                            PackageParser.METADATA_SUPPORTS_SIZE_CHANGES, false))) {
+                activity.setSupportsSizeChanges(true);
+            }
+        }
+    }
+
     private static ParseResult<ParsingPackage> parseOverlay(ParseInput input, ParsingPackage pkg,
             Resources res, XmlResourceParser parser) {
         TypedArray sa = res.obtainAttributes(parser, R.styleable.AndroidManifestResourceOverlay);
@@ -2730,9 +2748,11 @@ public class ParsingPackageUtils {
         SigningDetails verified;
         try {
             if (skipVerify) {
-                // systemDir APKs are already trusted, save time by not verifying
+                // systemDir APKs are already trusted, save time by not verifying; since the
+                // signature is not verified and some system apps can have their V2+ signatures
+                // stripped allow pulling the certs from the jar signature.
                 verified = ApkSignatureVerifier.unsafeGetCertsWithoutVerification(
-                        baseCodePath, minSignatureScheme);
+                        baseCodePath, SigningDetails.SignatureSchemeVersion.JAR);
             } else {
                 verified = ApkSignatureVerifier.verify(baseCodePath, minSignatureScheme);
             }

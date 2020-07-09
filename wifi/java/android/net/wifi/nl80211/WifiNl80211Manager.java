@@ -590,40 +590,6 @@ public class WifiNl80211Manager {
     }
 
     /**
-     * Unsubscribe scan for specific STA interface configured in wificond.
-     * Additionally, trigger stopPnoScan() before invalidating wificond scanner object.
-     *
-     * @return Returns true on success.
-     * @hide
-     */
-    @SystemApi
-    public boolean unsubscribeScan(@NonNull String ifaceName) {
-        if (getClientInterface(ifaceName) == null) {
-            Log.e(TAG, "No valid wificond client interface handler");
-            return false;
-        }
-
-        // stop any active pno scan
-        stopPnoScan(ifaceName);
-
-        try {
-            IWifiScannerImpl scannerImpl = mWificondScanners.get(ifaceName);
-            if (scannerImpl != null) {
-                scannerImpl.unsubscribeScanEvents();
-                scannerImpl.unsubscribePnoScanEvents();
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Failed to unsubscribe wificond scanner due to remote exception");
-            return false;
-        }
-
-        mWificondScanners.remove(ifaceName);
-        mScanEventHandlers.remove(ifaceName);
-        mPnoScanEventHandlers.remove(ifaceName);
-        return true;
-    }
-
-    /**
      * Tear down a specific client (STA) interface configured using
      * {@link #setupInterfaceForClientMode(String, Executor, ScanEventCallback, ScanEventCallback)}.
      *
@@ -1067,11 +1033,11 @@ public class WifiNl80211Manager {
      * The result depends on the on the country code that has been set.
      *
      * @param band as specified by one of the WifiScanner.WIFI_BAND_* constants.
-     * The following bands are supported {@link @WifiScanner.WifiBandBasic}:
-     * WifiScanner.WIFI_BAND_24_GHZ
-     * WifiScanner.WIFI_BAND_5_GHZ
-     * WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY
-     * WifiScanner.WIFI_BAND_6_GHZ
+     * The following bands are supported:
+     * {@link WifiScanner#WIFI_BAND_24_GHZ},
+     * {@link WifiScanner#WIFI_BAND_5_GHZ},
+     * {@link WifiScanner#WIFI_BAND_5_GHZ_DFS_ONLY},
+     * {@link WifiScanner#WIFI_BAND_6_GHZ}
      * @return frequencies vector of valid frequencies (MHz), or an empty array for error.
      * @throws IllegalArgumentException if band is not recognized.
      */

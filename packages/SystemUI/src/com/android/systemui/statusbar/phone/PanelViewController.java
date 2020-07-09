@@ -47,6 +47,7 @@ import com.android.systemui.statusbar.FlingAnimationUtils;
 import com.android.systemui.statusbar.StatusBarState;
 import com.android.systemui.statusbar.SysuiStatusBarStateController;
 import com.android.systemui.statusbar.VibratorHelper;
+import com.android.systemui.statusbar.phone.LockscreenGestureLogger.LockscreenUiEvent;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
 import android.util.BoostFramework;
 
@@ -327,6 +328,8 @@ public abstract class PanelViewController {
 
         mLockscreenGestureLogger.writeAtFractionalPosition(MetricsEvent.ACTION_PANEL_VIEW_EXPAND,
                 (int) (event.getX() / width * 100), (int) (event.getY() / height * 100), rot);
+        mLockscreenGestureLogger
+                .log(LockscreenUiEvent.LOCKSCREEN_UNLOCKED_NOTIFICATION_PANEL_EXPAND);
     }
 
     protected void maybeVibrateOnOpening() {
@@ -386,6 +389,7 @@ public abstract class PanelViewController {
                 int heightDp = (int) Math.abs((y - mInitialTouchY) / displayDensity);
                 int velocityDp = (int) Math.abs(vel / displayDensity);
                 mLockscreenGestureLogger.write(MetricsEvent.ACTION_LS_UNLOCK, heightDp, velocityDp);
+                mLockscreenGestureLogger.log(LockscreenUiEvent.LOCKSCREEN_UNLOCK);
             }
             fling(vel, expand, isFalseTouch(x, y));
             onTrackingStopped(expand);
@@ -541,9 +545,9 @@ public abstract class PanelViewController {
         // the animation only to the last notification, and then jump to the maximum panel height so
         // clear all just fades in and the decelerating motion is towards the last notification.
         final boolean clearAllExpandHack = expand &&
-                shouldExpandToTopOfClearAll(getMaxPanelHeight() - getClearAllHeight());
+                shouldExpandToTopOfClearAll(getMaxPanelHeight() - getClearAllHeightWithPadding());
         if (clearAllExpandHack) {
-            target = getMaxPanelHeight() - getClearAllHeight();
+            target = getMaxPanelHeight() - getClearAllHeightWithPadding();
         }
         if (target == mExpandedHeight || getOverExpansionAmount() > 0f && expand) {
             notifyExpandingFinished();
@@ -1044,9 +1048,9 @@ public abstract class PanelViewController {
     protected abstract boolean isClearAllVisible();
 
     /**
-     * @return the height of the clear all button, in pixels
+     * @return the height of the clear all button, in pixels including padding
      */
-    protected abstract int getClearAllHeight();
+    protected abstract int getClearAllHeightWithPadding();
 
     public void setHeadsUpManager(HeadsUpManagerPhone headsUpManager) {
         mHeadsUpManager = headsUpManager;

@@ -60,6 +60,7 @@ struct Constants {
     static constexpr auto storagePrefix = "st"sv;
     static constexpr auto mountpointMdPrefix = ".mountpoint."sv;
     static constexpr auto infoMdName = ".info"sv;
+    static constexpr auto readLogsDisabledMarkerName = ".readlogs_disabled"sv;
     static constexpr auto libDir = "lib"sv;
     static constexpr auto libSuffix = ".so"sv;
     static constexpr auto blockSize = 4096;
@@ -172,6 +173,13 @@ std::string makeBindMdName() {
 
     return name;
 }
+
+static bool checkReadLogsDisabledMarker(std::string_view root) {
+    const auto markerPath = path::c_str(path::join(root, constants().readLogsDisabledMarkerName));
+    struct stat st;
+    return (::stat(markerPath, &st) == 0);
+}
+
 } // namespace
 
 IncrementalService::IncFsMount::~IncFsMount() {
@@ -268,22 +276,14 @@ IncrementalService::IncrementalService(ServiceManagerWrapper&& sm, std::string_v
         mAppOpsManager(sm.getAppOpsManager()),
         mJni(sm.getJni()),
         mLooper(sm.getLooper()),
+        mTimedQueue(sm.getTimedQueue()),
         mIncrementalDir(rootDir) {
-    if (!mVold) {
-        LOG(FATAL) << "Vold service is unavailable";
-    }
-    if (!mDataLoaderManager) {
-        LOG(FATAL) << "DataLoaderManagerService is unavailable";
-    }
-    if (!mAppOpsManager) {
-        LOG(FATAL) << "AppOpsManager is unavailable";
-    }
-    if (!mJni) {
-        LOG(FATAL) << "JNI is unavailable";
-    }
-    if (!mLooper) {
-        LOG(FATAL) << "Looper is unavailable";
-    }
+    CHECK(mVold) << "Vold service is unavailable";
+    CHECK(mDataLoaderManager) << "DataLoaderManagerService is unavailable";
+    CHECK(mAppOpsManager) << "AppOpsManager is unavailable";
+    CHECK(mJni) << "JNI is unavailable";
+    CHECK(mLooper) << "Looper is unavailable";
+    CHECK(mTimedQueue) << "TimedQueue is unavailable";
 
     mJobQueue.reserve(16);
     mJobProcessor = std::thread([this]() {
@@ -293,10 +293,6 @@ IncrementalService::IncrementalService(ServiceManagerWrapper&& sm, std::string_v
     mCmdLooperThread = std::thread([this]() {
         mJni->initializeForCurrentThread();
         runCmdLooper();
-    });
-    mTimerThread = std::thread([this]() {
-        mJni->initializeForCurrentThread();
-        runTimers();
     });
 
     const auto mountedRootNames = adoptMountedInstances();
@@ -310,10 +306,8 @@ IncrementalService::~IncrementalService() {
     }
     mJobCondition.notify_all();
     mJobProcessor.join();
-    mTimerCondition.notify_all();
-    mTimerThread.join();
     mCmdLooperThread.join();
-    mTimedJobs.clear();
+    mTimedQueue->stop();
     // Ensure that mounts are destroyed while the service is still valid.
     mBindsByPath.clear();
     mMounts.clear();
@@ -632,6 +626,32 @@ StorageId IncrementalService::findStorageId(std::string_view path) const {
     return it->second->second.storage;
 }
 
+void IncrementalService::disableReadLogs(StorageId storageId) {
+    std::unique_lock l(mLock);
+    const auto ifs = getIfsLocked(storageId);
+    if (!ifs) {
+        LOG(ERROR) << "disableReadLogs failed, invalid storageId: " << storageId;
+        return;
+    }
+    if (!ifs->readLogsEnabled()) {
+        return;
+    }
+    ifs->disableReadLogs();
+    l.unlock();
+
+    const auto metadata = constants().readLogsDisabledMarkerName;
+    if (auto err = mIncFs->makeFile(ifs->control,
+                                    path::join(ifs->root, constants().mount,
+                                               constants().readLogsDisabledMarkerName),
+                                    0777, idFromMetadata(metadata), {})) {
+        //{.metadata = {metadata.data(), (IncFsSize)metadata.size()}})) {
+        LOG(ERROR) << "Failed to make marker file for storageId: " << storageId;
+        return;
+    }
+
+    setStorageParams(storageId, /*enableReadLogs=*/false);
+}
+
 int IncrementalService::setStorageParams(StorageId storageId, bool enableReadLogs) {
     const auto ifs = getIfs(storageId);
     if (!ifs) {
@@ -641,6 +661,11 @@ int IncrementalService::setStorageParams(StorageId storageId, bool enableReadLog
 
     const auto& params = ifs->dataLoaderStub->params();
     if (enableReadLogs) {
+        if (!ifs->readLogsEnabled()) {
+            LOG(ERROR) << "setStorageParams failed, readlogs disabled for storageId: " << storageId;
+            return -EPERM;
+        }
+
         if (auto status = mAppOpsManager->checkPermission(kDataUsageStats, kOpUsage,
                                                           params.packageName.c_str());
             !status.isOk()) {
@@ -1086,6 +1111,11 @@ std::unordered_set<std::string_view> IncrementalService::adoptMountedInstances()
                                                 std::move(control), *this);
         cleanupFiles.release(); // ifs will take care of that now
 
+        // Check if marker file present.
+        if (checkReadLogsDisabledMarker(root)) {
+            ifs->disableReadLogs();
+        }
+
         std::vector<std::pair<std::string, metadata::BindPoint>> permanentBindPoints;
         auto d = openDir(root);
         while (auto e = ::readdir(d.get())) {
@@ -1256,6 +1286,11 @@ bool IncrementalService::mountExistingImage(std::string_view root) {
 
     ifs->mountId = mount.storage().id();
     mNextId = std::max(mNextId, ifs->mountId + 1);
+
+    // Check if marker file present.
+    if (checkReadLogsDisabledMarker(mountTarget)) {
+        ifs->disableReadLogs();
+    }
 
     // DataLoader params
     DataLoaderParamsParcel dataLoaderParams;
@@ -1710,53 +1745,18 @@ void IncrementalService::onAppOpChanged(const std::string& packageName) {
     }
 }
 
-void IncrementalService::addTimedJob(MountId id, TimePoint when, Job what) {
+void IncrementalService::addTimedJob(MountId id, Milliseconds after, Job what) {
     if (id == kInvalidStorageId) {
         return;
     }
-    {
-        std::unique_lock lock(mTimerMutex);
-        mTimedJobs.insert(TimedJob{id, when, std::move(what)});
-    }
-    mTimerCondition.notify_all();
+    mTimedQueue->addJob(id, after, std::move(what));
 }
 
 void IncrementalService::removeTimedJobs(MountId id) {
     if (id == kInvalidStorageId) {
         return;
     }
-    {
-        std::unique_lock lock(mTimerMutex);
-        std::erase_if(mTimedJobs, [id](auto&& item) { return item.id == id; });
-    }
-}
-
-void IncrementalService::runTimers() {
-    static constexpr TimePoint kInfinityTs{Clock::duration::max()};
-    TimePoint nextTaskTs = kInfinityTs;
-    for (;;) {
-        std::unique_lock lock(mTimerMutex);
-        mTimerCondition.wait_until(lock, nextTaskTs, [this]() {
-            auto now = Clock::now();
-            return !mRunning || (!mTimedJobs.empty() && mTimedJobs.begin()->when <= now);
-        });
-        if (!mRunning) {
-            return;
-        }
-
-        auto now = Clock::now();
-        auto it = mTimedJobs.begin();
-        // Always acquire begin(). We can't use it after unlock as mTimedJobs can change.
-        for (; it != mTimedJobs.end() && it->when <= now; it = mTimedJobs.begin()) {
-            auto job = it->what;
-            mTimedJobs.erase(it);
-
-            lock.unlock();
-            job();
-            lock.lock();
-        }
-        nextTaskTs = it != mTimedJobs.end() ? it->when : kInfinityTs;
-    }
+    mTimedQueue->removeJobs(id);
 }
 
 IncrementalService::DataLoaderStub::DataLoaderStub(IncrementalService& service, MountId id,
@@ -2029,8 +2029,8 @@ void IncrementalService::DataLoaderStub::updateHealthStatus(bool baseline) {
             mHealthBase = {now, kernelTsUs};
         }
 
-        if (kernelTsUs == kMaxBootClockTsUs || mHealthBase.userTs > now ||
-            mHealthBase.kernelTsUs > kernelTsUs) {
+        if (kernelTsUs == kMaxBootClockTsUs || mHealthBase.kernelTsUs == kMaxBootClockTsUs ||
+            mHealthBase.userTs > now) {
             LOG(DEBUG) << id() << ": No pending reads or invalid base, report Ok and wait.";
             registerForPendingReads();
             healthStatusToReport = IStorageHealthListener::HEALTH_STATUS_OK;
@@ -2056,6 +2056,9 @@ void IncrementalService::DataLoaderStub::updateHealthStatus(bool baseline) {
             return;
         }
 
+        // Don't schedule timer job less than 500ms in advance.
+        static constexpr auto kTolerance = 500ms;
+
         const auto blockedTimeout = std::chrono::milliseconds(mHealthCheckParams.blockedTimeoutMs);
         const auto unhealthyTimeout =
                 std::chrono::milliseconds(mHealthCheckParams.unhealthyTimeoutMs);
@@ -2065,31 +2068,28 @@ void IncrementalService::DataLoaderStub::updateHealthStatus(bool baseline) {
 
         const auto kernelDeltaUs = kernelTsUs - mHealthBase.kernelTsUs;
         const auto userTs = mHealthBase.userTs + std::chrono::microseconds(kernelDeltaUs);
-        const auto delta = now - userTs;
+        const auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(now - userTs);
 
-        TimePoint whenToCheckBack;
-        if (delta < blockedTimeout) {
+        Milliseconds checkBackAfter;
+        if (delta + kTolerance < blockedTimeout) {
             LOG(DEBUG) << id() << ": Report reads pending and wait for blocked status.";
-            whenToCheckBack = userTs + blockedTimeout;
+            checkBackAfter = blockedTimeout - delta;
             healthStatusToReport = IStorageHealthListener::HEALTH_STATUS_READS_PENDING;
-        } else if (delta < unhealthyTimeout) {
+        } else if (delta + kTolerance < unhealthyTimeout) {
             LOG(DEBUG) << id() << ": Report blocked and wait for unhealthy.";
-            whenToCheckBack = userTs + unhealthyTimeout;
+            checkBackAfter = unhealthyTimeout - delta;
             healthStatusToReport = IStorageHealthListener::HEALTH_STATUS_BLOCKED;
         } else {
             LOG(DEBUG) << id() << ": Report unhealthy and continue monitoring.";
-            whenToCheckBack = now + unhealthyMonitoring;
+            checkBackAfter = unhealthyMonitoring;
             healthStatusToReport = IStorageHealthListener::HEALTH_STATUS_UNHEALTHY;
         }
-        LOG(DEBUG) << id() << ": updateHealthStatus in "
-                   << double(std::chrono::duration_cast<std::chrono::milliseconds>(whenToCheckBack -
-                                                                                   now)
-                                     .count()) /
-                        1000.0
+        LOG(DEBUG) << id() << ": updateHealthStatus in " << double(checkBackAfter.count()) / 1000.0
                    << "secs";
-        mService.addTimedJob(id(), whenToCheckBack, [this]() { updateHealthStatus(); });
+        mService.addTimedJob(id(), checkBackAfter, [this]() { updateHealthStatus(); });
     }
 
+    // With kTolerance we are expecting these to execute before the next update.
     if (healthStatusToReport != -1) {
         onHealthStatus(healthListener, healthStatusToReport);
     }
@@ -2178,6 +2178,16 @@ void IncrementalService::DataLoaderStub::onDump(int fd) {
     dprintf(fd, "      targetStatus: %d\n", mTargetStatus);
     dprintf(fd, "      targetStatusTs: %lldmcs\n",
             (long long)(elapsedMcs(mTargetStatusTs, Clock::now())));
+    dprintf(fd, "      health: {\n");
+    dprintf(fd, "        path: %s\n", mHealthPath.c_str());
+    dprintf(fd, "        base: %lldmcs (%lld)\n",
+            (long long)(elapsedMcs(mHealthBase.userTs, Clock::now())),
+            (long long)mHealthBase.kernelTsUs);
+    dprintf(fd, "        blockedTimeoutMs: %d\n", int(mHealthCheckParams.blockedTimeoutMs));
+    dprintf(fd, "        unhealthyTimeoutMs: %d\n", int(mHealthCheckParams.unhealthyTimeoutMs));
+    dprintf(fd, "        unhealthyMonitoringMs: %d\n",
+            int(mHealthCheckParams.unhealthyMonitoringMs));
+    dprintf(fd, "      }\n");
     const auto& params = mParams;
     dprintf(fd, "      dataLoaderParams: {\n");
     dprintf(fd, "        type: %s\n", toString(params.type).c_str());

@@ -83,6 +83,8 @@ public class Surface implements Parcelable {
     private static native int nativeGetHeight(long nativeObject);
 
     private static native long nativeGetNextFrameNumber(long nativeObject);
+    private static native boolean nativeIsBufferAccumulated(long nativeObject);
+    private static native void nativeSetPresentTimeMode(long nativeObject, int mode);
     private static native int nativeSetScalingMode(long nativeObject, int scalingMode);
     private static native int nativeForceScopedDisconnect(long nativeObject);
     private static native int nativeAttachAndQueueBufferWithColorSpace(long nativeObject,
@@ -195,7 +197,10 @@ public class Surface implements Parcelable {
 
     // From native_window.h. Keep these in sync.
     /**
-     * There are no inherent restrictions on the frame rate of this surface.
+     * There are no inherent restrictions on the frame rate of this surface. When the
+     * system selects a frame rate other than what the app requested, the app will be able
+     * to run at the system frame rate without requiring pull down. This value should be
+     * used when displaying game content, UIs, and anything that isn't video.
      */
     public static final int FRAME_RATE_COMPATIBILITY_DEFAULT = 0;
 
@@ -205,7 +210,7 @@ public class Surface implements Parcelable {
      * other than what the app requested, the app will need to do pull down or use some
      * other technique to adapt to the system's frame rate. The user experience is likely
      * to be worse (e.g. more frame stuttering) than it would be if the system had chosen
-     * the app's requested frame rate.
+     * the app's requested frame rate. This value should be used for video content.
      */
     public static final int FRAME_RATE_COMPATIBILITY_FIXED_SOURCE = 1;
 
@@ -702,6 +707,28 @@ public class Surface implements Parcelable {
         synchronized (mLock) {
             checkNotReleasedLocked();
             nativeAllocateBuffers(mNativeObject);
+        }
+    }
+
+    /**
+     * Returns true if buffer accumulated
+     * @hide
+     */
+    public boolean isBufferAccumulated() {
+        synchronized (mLock) {
+            checkNotReleasedLocked();
+            return nativeIsBufferAccumulated(mNativeObject);
+        }
+    }
+
+    /**
+     * Set the mode to indicate if need to set present time for the buffer
+     * @hide
+     */
+    public void setPresentTimeMode(int mode) {
+        synchronized (mLock) {
+            checkNotReleasedLocked();
+            nativeSetPresentTimeMode(mNativeObject, mode);
         }
     }
 

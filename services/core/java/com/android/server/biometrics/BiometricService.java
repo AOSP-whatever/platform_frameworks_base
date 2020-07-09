@@ -879,13 +879,13 @@ public class BiometricService extends SystemService {
         }
 
         @Override // Binder call
-        public long[] getAuthenticatorIds() {
+        public long[] getAuthenticatorIds(int callingUserId) {
             checkInternalPermission();
 
             final List<Long> ids = new ArrayList<>();
             for (AuthenticatorWrapper authenticator : mAuthenticators) {
                 try {
-                    final long id = authenticator.impl.getAuthenticatorId();
+                    final long id = authenticator.impl.getAuthenticatorId(callingUserId);
                     if (Utils.isAtLeastStrength(authenticator.getActualStrength(),
                             Authenticators.BIOMETRIC_STRONG) && id != 0) {
                         ids.add(id);
@@ -1630,14 +1630,14 @@ public class BiometricService extends SystemService {
     }
 
     private void handleOnSystemEvent(int event) {
-        final boolean shouldReceive = mCurrentAuthSession.mBundle
-                .getBoolean(BiometricPrompt.KEY_RECEIVE_SYSTEM_EVENTS, false);
-        Slog.d(TAG, "onSystemEvent: " + event + ", shouldReceive: " + shouldReceive);
-
         if (mCurrentAuthSession == null) {
             Slog.e(TAG, "Auth session null");
             return;
         }
+
+        final boolean shouldReceive = mCurrentAuthSession.mBundle
+                .getBoolean(BiometricPrompt.KEY_RECEIVE_SYSTEM_EVENTS, false);
+        Slog.d(TAG, "onSystemEvent: " + event + ", shouldReceive: " + shouldReceive);
 
         if (!shouldReceive) {
             return;

@@ -16,6 +16,9 @@
 
 package android.view;
 
+import static android.view.InsetsController.ANIMATION_TYPE_NONE;
+import static android.view.InsetsController.ANIMATION_TYPE_USER;
+import static android.view.InsetsState.ITYPE_IME;
 import static android.view.InsetsState.ITYPE_STATUS_BAR;
 import static android.view.WindowInsets.Type.statusBars;
 
@@ -24,6 +27,7 @@ import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
@@ -31,6 +35,7 @@ import static org.mockito.Mockito.verifyZeroInteractions;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.platform.test.annotations.Presubmit;
 import android.view.SurfaceControl.Transaction;
 import android.view.WindowManager.BadTokenException;
@@ -119,6 +124,40 @@ public class InsetsSourceConsumerTest {
             verify(mSpyInsetsSource).setVisible(eq(true));
         });
 
+    }
+
+    @Test
+    public void testPendingStates() {
+        InsetsState state = new InsetsState();
+        InsetsController controller = mock(InsetsController.class);
+        InsetsSourceConsumer consumer = new InsetsSourceConsumer(
+                ITYPE_IME, state, null, controller);
+
+        InsetsSource source = new InsetsSource(ITYPE_IME);
+        source.setFrame(0, 1, 2, 3);
+        consumer.updateSource(new InsetsSource(source), ANIMATION_TYPE_NONE);
+
+        // While we're animating, updates are delayed
+        source.setFrame(4, 5, 6, 7);
+        consumer.updateSource(new InsetsSource(source), ANIMATION_TYPE_USER);
+        assertEquals(new Rect(0, 1, 2, 3), state.peekSource(ITYPE_IME).getFrame());
+
+        // Finish the animation, now the pending frame should be applied
+        assertTrue(consumer.notifyAnimationFinished());
+        assertEquals(new Rect(4, 5, 6, 7), state.peekSource(ITYPE_IME).getFrame());
+
+        // Animating again, updates are delayed
+        source.setFrame(8, 9, 10, 11);
+        consumer.updateSource(new InsetsSource(source), ANIMATION_TYPE_USER);
+        assertEquals(new Rect(4, 5, 6, 7), state.peekSource(ITYPE_IME).getFrame());
+
+        // Updating with the current frame triggers a different code path, verify this clears
+        // the pending 8, 9, 10, 11 frame:
+        source.setFrame(4, 5, 6, 7);
+        consumer.updateSource(new InsetsSource(source), ANIMATION_TYPE_USER);
+
+        assertFalse(consumer.notifyAnimationFinished());
+        assertEquals(new Rect(4, 5, 6, 7), state.peekSource(ITYPE_IME).getFrame());
     }
 
     @Test

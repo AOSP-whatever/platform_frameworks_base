@@ -615,7 +615,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     public static final String EXTRA_WIFI_AP_FAILURE_DESCRIPTION = "wifi_ap_error_description";
     /**
      *  If Wi-Fi AP start failed with SAP_START_FAILURE_NO_CHANNEL reason code and has this
@@ -623,7 +622,6 @@ public class WifiManager {
      *
      *  @hide
      */
-    @SystemApi
     public static final String WIFI_AP_FAILURE_DESC_NO_5GHZ_SUPPORT = "wifi_ap_error_no_5g_support";
     /**
      * The previous Wi-Fi state.
@@ -958,19 +956,26 @@ public class WifiManager {
 
     /**
      * Broadcast intent action indicating that the configured networks changed.
-     * This can be as a result of adding/updating/deleting a network. If
-     * {@link #EXTRA_MULTIPLE_NETWORKS_CHANGED} is set to true the new configuration
-     * can be retreived with the {@link #EXTRA_WIFI_CONFIGURATION} extra. If multiple
-     * Wi-Fi configurations changed, {@link #EXTRA_WIFI_CONFIGURATION} will not be present.
+     * This can be as a result of adding/updating/deleting a network.
+     * <br />
+     * {@link #EXTRA_CHANGE_REASON} contains whether the configuration was added/changed/removed.
+     * {@link #EXTRA_WIFI_CONFIGURATION} is never set starting in Android 11.
+     * {@link #EXTRA_MULTIPLE_NETWORKS_CHANGED} is set for backwards compatibility reasons, but
+     * its value is always true, even if only a single network changed.
+     * <br />
+     * The {@link android.Manifest.permission#ACCESS_WIFI_STATE ACCESS_WIFI_STATE} permission is
+     * required to receive this broadcast.
+     *
      * @hide
      */
     @SystemApi
     public static final String CONFIGURED_NETWORKS_CHANGED_ACTION =
         "android.net.wifi.CONFIGURED_NETWORKS_CHANGE";
     /**
-     * The lookup key for a (@link android.net.wifi.WifiConfiguration} object representing
+     * The lookup key for a {@link android.net.wifi.WifiConfiguration} object representing
      * the changed Wi-Fi configuration when the {@link #CONFIGURED_NETWORKS_CHANGED_ACTION}
      * broadcast is sent.
+     * Note: this extra is never set starting in Android 11.
      * @hide
      */
     @SystemApi
@@ -978,14 +983,16 @@ public class WifiManager {
     /**
      * Multiple network configurations have changed.
      * @see #CONFIGURED_NETWORKS_CHANGED_ACTION
-     *
+     * Note: this extra is always true starting in Android 11.
      * @hide
      */
     @SystemApi
     public static final String EXTRA_MULTIPLE_NETWORKS_CHANGED = "multipleChanges";
     /**
      * The lookup key for an integer indicating the reason a Wi-Fi network configuration
-     * has changed. Only present if {@link #EXTRA_MULTIPLE_NETWORKS_CHANGED} is {@code false}
+     * has changed. One of {@link #CHANGE_REASON_ADDED}, {@link #CHANGE_REASON_REMOVED},
+     * {@link #CHANGE_REASON_CONFIG_CHANGE}.
+     *
      * @see #CONFIGURED_NETWORKS_CHANGED_ACTION
      * @hide
      */
@@ -1186,7 +1193,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String WIFI_COUNTRY_CODE_CHANGED_ACTION =
             "android.net.wifi.COUNTRY_CODE_CHANGED";
@@ -1688,7 +1694,6 @@ public class WifiManager {
       *
       * @hide no intent to publish
       */
-      @SystemApi
       public boolean isExtendingWifi() {
           try {
               return mService.isExtendingWifi();
@@ -1704,7 +1709,6 @@ public class WifiManager {
       *
       * @hide no intent to publish
       */
-      @SystemApi
       public boolean isWifiCoverageExtendFeatureEnabled() {
           try {
               return mService.isWifiCoverageExtendFeatureEnabled();
@@ -1718,7 +1722,6 @@ public class WifiManager {
       *
       * @hide no intent to publish
       */
-      @SystemApi
       public void enableWifiCoverageExtendFeature(boolean enable) {
           try {
               mService.enableWifiCoverageExtendFeature(enable);
@@ -1734,7 +1737,6 @@ public class WifiManager {
       *
       * @hide no intent to publish
       */
-      @SystemApi
       public int getSoftApWifiStandard() {
           try {
               return mService.getSoftApWifiStandard();
@@ -2028,9 +2030,10 @@ public class WifiManager {
      * for a detailed explanation of the parameters.
      * When the device decides to connect to one of the provided network suggestions, platform sends
      * a directed broadcast {@link #ACTION_WIFI_NETWORK_SUGGESTION_POST_CONNECTION} to the app if
-     * the network was created with {@link WifiNetworkSuggestion.Builder
-     * #setIsAppInteractionRequired()} flag set and the app holds
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION ACCESS_FINE_LOCATION} permission.
+     * the network was created with
+     * {@link WifiNetworkSuggestion.Builder#setIsAppInteractionRequired(boolean)} flag set and the
+     * app holds {@link android.Manifest.permission#ACCESS_FINE_LOCATION ACCESS_FINE_LOCATION}
+     * permission.
      *<p>
      * NOTE:
      * <li> These networks are just a suggestion to the platform. The platform will ultimately
@@ -5408,7 +5411,6 @@ public class WifiManager {
      * @return String of capabilities from driver for type capaParameter.
      * {@hide}
      */
-    @SystemApi
     @NonNull
     public String getCapabilities(@NonNull String capaType) {
         try {
@@ -6550,7 +6552,6 @@ public class WifiManager {
       *
       * @hide no intent to publish
       */
-    @SystemApi
     public boolean isVht8ssCapableDevice() {
         try {
             return mService.isVht8ssCapableDevice();

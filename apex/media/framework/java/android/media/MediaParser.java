@@ -31,6 +31,7 @@ import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.ParserException;
 import com.google.android.exoplayer2.drm.DrmInitData.SchemeData;
+import com.google.android.exoplayer2.extractor.ChunkIndex;
 import com.google.android.exoplayer2.extractor.DefaultExtractorInput;
 import com.google.android.exoplayer2.extractor.Extractor;
 import com.google.android.exoplayer2.extractor.ExtractorInput;
@@ -203,6 +204,15 @@ public final class MediaParser {
         /** Returned by {@link #getDurationMicros()} when the duration is unknown. */
         public static final int UNKNOWN_DURATION = Integer.MIN_VALUE;
 
+        /**
+         * For each {@link #getSeekPoints} call, returns a single {@link SeekPoint} whose {@link
+         * SeekPoint#timeMicros} matches the requested timestamp, and whose {@link
+         * SeekPoint#position} is 0.
+         *
+         * @hide
+         */
+        public static final SeekMap DUMMY = new SeekMap(new DummyExoPlayerSeekMap());
+
         private final com.google.android.exoplayer2.extractor.SeekMap mExoPlayerSeekMap;
 
         private SeekMap(com.google.android.exoplayer2.extractor.SeekMap exoplayerSeekMap) {
@@ -219,7 +229,8 @@ public final class MediaParser {
          * duration is unknown.
          */
         public long getDurationMicros() {
-            return mExoPlayerSeekMap.getDurationUs();
+            long durationUs = mExoPlayerSeekMap.getDurationUs();
+            return durationUs != C.TIME_UNSET ? durationUs : UNKNOWN_DURATION;
         }
 
         /**
@@ -402,9 +413,9 @@ public final class MediaParser {
          *     onSampleDataFound(int, MediaParser.InputReader)} for the specified track, since the
          *     last byte belonging to the sample whose metadata is being passed.
          * @param cryptoInfo Encryption data required to decrypt the sample. May be null for
-         *     unencrypted samples. MediaParser may reuse {@link CryptoInfo} instances to avoid
-         *     allocations, so implementations of this method must not write to or keep reference to
-         *     the fields of this parameter.
+         *     unencrypted samples. Implementors should treat any output {@link CryptoInfo}
+         *     instances as immutable. MediaParser will not modify any output {@code cryptoInfos}
+         *     and implementors should not modify them either.
          */
         void onSampleCompleted(
                 int trackIndex,
@@ -794,6 +805,79 @@ public final class MediaParser {
      */
     public static final String PARAMETER_EAGERLY_EXPOSE_TRACKTYPE =
             "android.media.mediaparser.eagerlyExposeTrackType";
+    /**
+     * Sets whether a dummy {@link SeekMap} should be exposed before starting extraction. {@code
+     * boolean} expected. Default value is {@code false}.
+     *
+     * <p>For each {@link SeekMap#getSeekPoints} call, the dummy {@link SeekMap} returns a single
+     * {@link SeekPoint} whose {@link SeekPoint#timeMicros} matches the requested timestamp, and
+     * whose {@link SeekPoint#position} is 0.
+     *
+     * @hide
+     */
+    public static final String PARAMETER_EXPOSE_DUMMY_SEEKMAP =
+            "android.media.mediaparser.exposeDummySeekMap";
+
+    /**
+     * Sets whether chunk indices available in the extracted media should be exposed as {@link
+     * MediaFormat MediaFormats}. {@code boolean} expected. Default value is {@link false}.
+     *
+     * <p>When set to true, any information about media segmentation will be exposed as a {@link
+     * MediaFormat} (with track index 0) containing four {@link ByteBuffer} elements under the
+     * following keys:
+     *
+     * <ul>
+     *   <li>"chunk-index-int-sizes": Contains {@code ints} representing the sizes in bytes of each
+     *       of the media segments.
+     *   <li>"chunk-index-long-offsets": Contains {@code longs} representing the byte offsets of
+     *       each segment in the stream.
+     *   <li>"chunk-index-long-us-durations": Contains {@code longs} representing the media duration
+     *       of each segment, in microseconds.
+     *   <li>"chunk-index-long-us-times": Contains {@code longs} representing the start time of each
+     *       segment, in microseconds.
+     * </ul>
+     *
+     * @hide
+     */
+    public static final String PARAMETER_EXPOSE_CHUNK_INDEX_AS_MEDIA_FORMAT =
+            "android.media.mediaParser.exposeChunkIndexAsMediaFormat";
+    /**
+     * Sets a list of closed-caption {@link MediaFormat MediaFormats} that should be exposed as part
+     * of the extracted media. {@code List<MediaFormat>} expected. Default value is an empty list.
+     *
+     * <p>Expected keys in the {@link MediaFormat} are:
+     *
+     * <ul>
+     *   <p>{@link MediaFormat#KEY_MIME}: Determine the type of captions (for example,
+     *   application/cea-608). Mandatory.
+     *   <p>{@link MediaFormat#KEY_CAPTION_SERVICE_NUMBER}: Determine the channel on which the
+     *   captions are transmitted. Optional.
+     * </ul>
+     *
+     * @hide
+     */
+    public static final String PARAMETER_EXPOSE_CAPTION_FORMATS =
+            "android.media.mediaParser.exposeCaptionFormats";
+    /**
+     * Sets whether the value associated with {@link #PARAMETER_EXPOSE_CAPTION_FORMATS} should
+     * override any in-band caption service declarations. {@code boolean} expected. Default value is
+     * {@link false}.
+     *
+     * <p>When {@code false}, any present in-band caption services information will override the
+     * values associated with {@link #PARAMETER_EXPOSE_CAPTION_FORMATS}.
+     *
+     * @hide
+     */
+    public static final String PARAMETER_OVERRIDE_IN_BAND_CAPTION_DECLARATIONS =
+            "android.media.mediaParser.overrideInBandCaptionDeclarations";
+    /**
+     * Sets whether a track for EMSG events should be exposed in case of parsing a container that
+     * supports them. {@code boolean} expected. Default value is {@link false}.
+     *
+     * @hide
+     */
+    public static final String PARAMETER_EXPOSE_EMSG_TRACK =
+            "android.media.mediaParser.exposeEmsgTrack";
 
     // Private constants.
 
@@ -804,6 +888,7 @@ public final class MediaParser {
     private static final String TS_MODE_MULTI_PMT = "multi_pmt";
     private static final String TS_MODE_HLS = "hls";
     private static final int BYTES_PER_SUBSAMPLE_ENCRYPTION_ENTRY = 6;
+    private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
 
     @IntDef(
             value = {
@@ -953,10 +1038,13 @@ public final class MediaParser {
     private final DataReaderAdapter mScratchDataReaderAdapter;
     private final ParsableByteArrayAdapter mScratchParsableByteArrayAdapter;
     @Nullable private final Constructor<DrmInitData.SchemeInitData> mSchemeInitDataConstructor;
+    private final ArrayList<Format> mMuxedCaptionFormats;
     private boolean mInBandCryptoInfo;
     private boolean mIncludeSupplementalData;
     private boolean mIgnoreTimestampOffset;
     private boolean mEagerlyExposeTrackType;
+    private boolean mExposeDummySeekMap;
+    private boolean mExposeChunkIndexAsMediaFormat;
     private String mParserName;
     private Extractor mExtractor;
     private ExtractorInput mExtractorInput;
@@ -1016,6 +1104,15 @@ public final class MediaParser {
         if (PARAMETER_EAGERLY_EXPOSE_TRACKTYPE.equals(parameterName)) {
             mEagerlyExposeTrackType = (boolean) value;
         }
+        if (PARAMETER_EXPOSE_DUMMY_SEEKMAP.equals(parameterName)) {
+            mExposeDummySeekMap = (boolean) value;
+        }
+        if (PARAMETER_EXPOSE_CHUNK_INDEX_AS_MEDIA_FORMAT.equals(parameterName)) {
+            mExposeChunkIndexAsMediaFormat = (boolean) value;
+        }
+        if (PARAMETER_EXPOSE_CAPTION_FORMATS.equals(parameterName)) {
+            setMuxedCaptionFormats((List<MediaFormat>) value);
+        }
         mParserParameters.put(parameterName, value);
         return this;
     }
@@ -1054,8 +1151,8 @@ public final class MediaParser {
      *
      * <p>This method will block until some progress has been made.
      *
-     * <p>If this instance was created using {@link #create}. the first call to this method will
-     * sniff the content with the parsers with the provided names.
+     * <p>If this instance was created using {@link #create}, the first call to this method will
+     * sniff the content using the selected parser implementations.
      *
      * @param seekableInputReader The {@link SeekableInputReader} from which to obtain the media
      *     container data.
@@ -1077,11 +1174,10 @@ public final class MediaParser {
         }
         mExoDataReader.mInputReader = seekableInputReader;
 
-        // TODO: Apply parameters when creating extractor instances.
         if (mExtractor == null) {
+            mPendingExtractorInit = true;
             if (!mParserName.equals(PARSER_NAME_UNKNOWN)) {
                 mExtractor = createExtractor(mParserName);
-                mExtractor.init(new ExtractorOutputAdapter());
             } else {
                 for (String parserName : mParserNamesPool) {
                     Extractor extractor = createExtractor(parserName);
@@ -1106,9 +1202,18 @@ public final class MediaParser {
         }
 
         if (mPendingExtractorInit) {
+            if (mExposeDummySeekMap) {
+                // We propagate the dummy seek map before initializing the extractor, in case the
+                // extractor initialization outputs a seek map.
+                mOutputConsumer.onSeekMapFound(SeekMap.DUMMY);
+            }
             mExtractor.init(new ExtractorOutputAdapter());
             mPendingExtractorInit = false;
+            // We return after initialization to allow clients use any output information before
+            // starting actual extraction.
+            return true;
         }
+
         if (isPendingSeek()) {
             mExtractor.seek(mPendingSeekPosition, mPendingSeekTimeMicros);
             removePendingSeek();
@@ -1122,6 +1227,7 @@ public final class MediaParser {
             throw new ParsingException(e);
         }
         if (result == Extractor.RESULT_END_OF_INPUT) {
+            mExtractorInput = null;
             return false;
         }
         if (result == Extractor.RESULT_SEEK) {
@@ -1179,6 +1285,14 @@ public final class MediaParser {
         mScratchDataReaderAdapter = new DataReaderAdapter();
         mScratchParsableByteArrayAdapter = new ParsableByteArrayAdapter();
         mSchemeInitDataConstructor = getSchemeInitDataConstructor();
+        mMuxedCaptionFormats = new ArrayList<>();
+    }
+
+    private void setMuxedCaptionFormats(List<MediaFormat> mediaFormats) {
+        mMuxedCaptionFormats.clear();
+        for (MediaFormat mediaFormat : mediaFormats) {
+            mMuxedCaptionFormats.add(toExoPlayerCaptionFormat(mediaFormat));
+        }
     }
 
     private boolean isPendingSeek() {
@@ -1205,6 +1319,10 @@ public final class MediaParser {
                 return new MatroskaExtractor(flags);
             case PARSER_NAME_FMP4:
                 flags |=
+                        getBooleanParameter(PARAMETER_EXPOSE_EMSG_TRACK)
+                                ? FragmentedMp4Extractor.FLAG_ENABLE_EMSG_TRACK
+                                : 0;
+                flags |=
                         getBooleanParameter(PARAMETER_MP4_IGNORE_EDIT_LISTS)
                                 ? FragmentedMp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS
                                 : 0;
@@ -1217,7 +1335,11 @@ public final class MediaParser {
                                 ? FragmentedMp4Extractor
                                         .FLAG_WORKAROUND_EVERY_VIDEO_FRAME_IS_SYNC_FRAME
                                 : 0;
-                return new FragmentedMp4Extractor(flags, timestampAdjuster);
+                return new FragmentedMp4Extractor(
+                        flags,
+                        timestampAdjuster,
+                        /* sideloadedTrack= */ null,
+                        mMuxedCaptionFormats);
             case PARSER_NAME_MP4:
                 flags |=
                         getBooleanParameter(PARAMETER_MP4_IGNORE_EDIT_LISTS)
@@ -1268,6 +1390,10 @@ public final class MediaParser {
                         getBooleanParameter(PARAMETER_TS_IGNORE_SPLICE_INFO_STREAM)
                                 ? DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM
                                 : 0;
+                flags |=
+                        getBooleanParameter(PARAMETER_OVERRIDE_IN_BAND_CAPTION_DECLARATIONS)
+                                ? DefaultTsPayloadReaderFactory.FLAG_OVERRIDE_CAPTION_DESCRIPTORS
+                                : 0;
                 String tsMode = getStringParameter(PARAMETER_TS_MODE, TS_MODE_SINGLE_PMT);
                 int hlsMode =
                         TS_MODE_SINGLE_PMT.equals(tsMode)
@@ -1280,7 +1406,7 @@ public final class MediaParser {
                         timestampAdjuster != null
                                 ? timestampAdjuster
                                 : new TimestampAdjuster(/* firstSampleTimestampUs= */ 0),
-                        new DefaultTsPayloadReaderFactory(flags));
+                        new DefaultTsPayloadReaderFactory(flags, mMuxedCaptionFormats));
             case PARSER_NAME_FLV:
                 return new FlvExtractor();
             case PARSER_NAME_OGG:
@@ -1402,6 +1528,19 @@ public final class MediaParser {
 
         @Override
         public void seekMap(com.google.android.exoplayer2.extractor.SeekMap exoplayerSeekMap) {
+            if (mExposeChunkIndexAsMediaFormat && exoplayerSeekMap instanceof ChunkIndex) {
+                ChunkIndex chunkIndex = (ChunkIndex) exoplayerSeekMap;
+                MediaFormat mediaFormat = new MediaFormat();
+                mediaFormat.setByteBuffer("chunk-index-int-sizes", toByteBuffer(chunkIndex.sizes));
+                mediaFormat.setByteBuffer(
+                        "chunk-index-long-offsets", toByteBuffer(chunkIndex.offsets));
+                mediaFormat.setByteBuffer(
+                        "chunk-index-long-us-durations", toByteBuffer(chunkIndex.durationsUs));
+                mediaFormat.setByteBuffer(
+                        "chunk-index-long-us-times", toByteBuffer(chunkIndex.timesUs));
+                mOutputConsumer.onTrackDataFound(
+                        /* trackIndex= */ 0, new TrackData(mediaFormat, /* drmInitData= */ null));
+            }
             mOutputConsumer.onSeekMapFound(new SeekMap(exoplayerSeekMap));
         }
     }
@@ -1409,23 +1548,28 @@ public final class MediaParser {
     private class TrackOutputAdapter implements TrackOutput {
 
         private final int mTrackIndex;
-        private final CryptoInfo mCryptoInfo;
+
+        private CryptoInfo mLastOutputCryptoInfo;
+        private CryptoInfo.Pattern mLastOutputEncryptionPattern;
+        private CryptoData mLastReceivedCryptoData;
 
         @EncryptionDataReadState private int mEncryptionDataReadState;
         private int mEncryptionDataSizeToSubtractFromSampleDataSize;
         private int mEncryptionVectorSize;
+        private byte[] mScratchIvSpace;
+        private int mSubsampleEncryptionDataSize;
+        private int[] mScratchSubsampleEncryptedBytesCount;
+        private int[] mScratchSubsampleClearBytesCount;
         private boolean mHasSubsampleEncryptionData;
-        private CryptoInfo.Pattern mEncryptionPattern;
         private int mSkippedSupplementalDataBytes;
 
         private TrackOutputAdapter(int trackIndex) {
             mTrackIndex = trackIndex;
-            mCryptoInfo = new CryptoInfo();
-            mCryptoInfo.iv = new byte[16]; // Size documented in CryptoInfo.
-            mCryptoInfo.numBytesOfClearData = new int[0];
-            mCryptoInfo.numBytesOfEncryptedData = new int[0];
+            mScratchIvSpace = new byte[16]; // Size documented in CryptoInfo.
+            mScratchSubsampleEncryptedBytesCount = new int[32];
+            mScratchSubsampleClearBytesCount = new int[32];
             mEncryptionDataReadState = STATE_READING_SIGNAL_BYTE;
-            mEncryptionPattern =
+            mLastOutputEncryptionPattern =
                     new CryptoInfo.Pattern(/* blocksToEncrypt= */ 0, /* blocksToSkip= */ 0);
         }
 
@@ -1466,35 +1610,39 @@ public final class MediaParser {
                             mEncryptionDataReadState = STATE_READING_INIT_VECTOR;
                             break;
                         case STATE_READING_INIT_VECTOR:
-                            Arrays.fill(mCryptoInfo.iv, (byte) 0); // Ensure 0-padding.
-                            data.readBytes(mCryptoInfo.iv, /* offset= */ 0, mEncryptionVectorSize);
+                            Arrays.fill(mScratchIvSpace, (byte) 0); // Ensure 0-padding.
+                            data.readBytes(mScratchIvSpace, /* offset= */ 0, mEncryptionVectorSize);
                             length -= mEncryptionVectorSize;
                             if (mHasSubsampleEncryptionData) {
                                 mEncryptionDataReadState = STATE_READING_SUBSAMPLE_ENCRYPTION_SIZE;
                             } else {
-                                mCryptoInfo.numSubSamples = 0;
+                                mSubsampleEncryptionDataSize = 0;
                                 mEncryptionDataReadState = STATE_READING_SIGNAL_BYTE;
                             }
                             break;
                         case STATE_READING_SUBSAMPLE_ENCRYPTION_SIZE:
-                            int numSubSamples = data.readUnsignedShort();
-                            mCryptoInfo.numSubSamples = numSubSamples;
-                            if (mCryptoInfo.numBytesOfClearData.length < numSubSamples) {
-                                mCryptoInfo.numBytesOfClearData = new int[numSubSamples];
-                                mCryptoInfo.numBytesOfEncryptedData = new int[numSubSamples];
+                            mSubsampleEncryptionDataSize = data.readUnsignedShort();
+                            if (mScratchSubsampleClearBytesCount.length
+                                    < mSubsampleEncryptionDataSize) {
+                                mScratchSubsampleClearBytesCount =
+                                        new int[mSubsampleEncryptionDataSize];
+                                mScratchSubsampleEncryptedBytesCount =
+                                        new int[mSubsampleEncryptionDataSize];
                             }
                             length -= 2;
                             mEncryptionDataSizeToSubtractFromSampleDataSize +=
-                                    2 + numSubSamples * BYTES_PER_SUBSAMPLE_ENCRYPTION_ENTRY;
+                                    2
+                                            + mSubsampleEncryptionDataSize
+                                                    * BYTES_PER_SUBSAMPLE_ENCRYPTION_ENTRY;
                             mEncryptionDataReadState = STATE_READING_SUBSAMPLE_ENCRYPTION_DATA;
                             break;
                         case STATE_READING_SUBSAMPLE_ENCRYPTION_DATA:
-                            for (int i = 0; i < mCryptoInfo.numSubSamples; i++) {
-                                mCryptoInfo.numBytesOfClearData[i] = data.readUnsignedShort();
-                                mCryptoInfo.numBytesOfEncryptedData[i] = data.readInt();
+                            for (int i = 0; i < mSubsampleEncryptionDataSize; i++) {
+                                mScratchSubsampleClearBytesCount[i] = data.readUnsignedShort();
+                                mScratchSubsampleEncryptedBytesCount[i] = data.readInt();
                             }
                             length -=
-                                    mCryptoInfo.numSubSamples
+                                    mSubsampleEncryptionDataSize
                                             * BYTES_PER_SUBSAMPLE_ENCRYPTION_ENTRY;
                             mEncryptionDataReadState = STATE_READING_SIGNAL_BYTE;
                             if (length != 0) {
@@ -1536,24 +1684,74 @@ public final class MediaParser {
             if (cryptoData == null) {
                 // The sample is not encrypted.
                 return null;
+            } else if (mInBandCryptoInfo) {
+                if (cryptoData != mLastReceivedCryptoData) {
+                    mLastOutputCryptoInfo =
+                            createNewCryptoInfoAndPopulateWithCryptoData(cryptoData);
+                    // We are using in-band crypto info, so the IV will be ignored. But we prevent
+                    // it from being null because toString assumes it non-null.
+                    mLastOutputCryptoInfo.iv = EMPTY_BYTE_ARRAY;
+                }
+            } else /* We must populate the full CryptoInfo. */ {
+                // CryptoInfo.pattern is not accessible to the user, so the user needs to feed
+                // this CryptoInfo directly to MediaCodec. We need to create a new CryptoInfo per
+                // sample because of per-sample initialization vector changes.
+                CryptoInfo newCryptoInfo = createNewCryptoInfoAndPopulateWithCryptoData(cryptoData);
+                newCryptoInfo.iv = Arrays.copyOf(mScratchIvSpace, mScratchIvSpace.length);
+                boolean canReuseSubsampleInfo =
+                        mLastOutputCryptoInfo != null
+                                && mLastOutputCryptoInfo.numSubSamples
+                                        == mSubsampleEncryptionDataSize;
+                for (int i = 0; i < mSubsampleEncryptionDataSize && canReuseSubsampleInfo; i++) {
+                    canReuseSubsampleInfo =
+                            mLastOutputCryptoInfo.numBytesOfClearData[i]
+                                            == mScratchSubsampleClearBytesCount[i]
+                                    && mLastOutputCryptoInfo.numBytesOfEncryptedData[i]
+                                            == mScratchSubsampleEncryptedBytesCount[i];
+                }
+                newCryptoInfo.numSubSamples = mSubsampleEncryptionDataSize;
+                if (canReuseSubsampleInfo) {
+                    newCryptoInfo.numBytesOfClearData = mLastOutputCryptoInfo.numBytesOfClearData;
+                    newCryptoInfo.numBytesOfEncryptedData =
+                            mLastOutputCryptoInfo.numBytesOfEncryptedData;
+                } else {
+                    newCryptoInfo.numBytesOfClearData =
+                            Arrays.copyOf(
+                                    mScratchSubsampleClearBytesCount, mSubsampleEncryptionDataSize);
+                    newCryptoInfo.numBytesOfEncryptedData =
+                            Arrays.copyOf(
+                                    mScratchSubsampleEncryptedBytesCount,
+                                    mSubsampleEncryptionDataSize);
+                }
+                mLastOutputCryptoInfo = newCryptoInfo;
             }
-            mCryptoInfo.key = cryptoData.encryptionKey;
-            // ExoPlayer modes match MediaCodec modes.
-            mCryptoInfo.mode = cryptoData.cryptoMode;
-            if (cryptoData.clearBlocks != 0) {
-                // Content is pattern-encrypted.
-                mCryptoInfo.setPattern(mEncryptionPattern);
-                mEncryptionPattern.set(cryptoData.encryptedBlocks, cryptoData.clearBlocks);
-            } else {
-                mCryptoInfo.setPattern(null);
+            mLastReceivedCryptoData = cryptoData;
+            return mLastOutputCryptoInfo;
+        }
+
+        private CryptoInfo createNewCryptoInfoAndPopulateWithCryptoData(CryptoData cryptoData) {
+            CryptoInfo cryptoInfo = new CryptoInfo();
+            cryptoInfo.key = cryptoData.encryptionKey;
+            cryptoInfo.mode = cryptoData.cryptoMode;
+            if (cryptoData.clearBlocks != mLastOutputEncryptionPattern.getSkipBlocks()
+                    || cryptoData.encryptedBlocks
+                            != mLastOutputEncryptionPattern.getEncryptBlocks()) {
+                mLastOutputEncryptionPattern =
+                        new CryptoInfo.Pattern(cryptoData.encryptedBlocks, cryptoData.clearBlocks);
             }
-            return mCryptoInfo;
+            cryptoInfo.setPattern(mLastOutputEncryptionPattern);
+            return cryptoInfo;
         }
 
         private void outputSampleData(ParsableByteArray data, int length) {
             mScratchParsableByteArrayAdapter.resetWithByteArray(data, length);
             try {
-                mOutputConsumer.onSampleDataFound(mTrackIndex, mScratchParsableByteArrayAdapter);
+                // Read all bytes from data. ExoPlayer extractors expect all sample data to be
+                // consumed by TrackOutput implementations when passing a ParsableByteArray.
+                while (mScratchParsableByteArrayAdapter.getLength() > 0) {
+                    mOutputConsumer.onSampleDataFound(
+                            mTrackIndex, mScratchParsableByteArrayAdapter);
+                }
             } catch (IOException e) {
                 // Unexpected.
                 throw new RuntimeException(e);
@@ -1626,6 +1824,28 @@ public final class MediaParser {
         }
     }
 
+    private static final class DummyExoPlayerSeekMap
+            implements com.google.android.exoplayer2.extractor.SeekMap {
+
+        @Override
+        public boolean isSeekable() {
+            return true;
+        }
+
+        @Override
+        public long getDurationUs() {
+            return C.TIME_UNSET;
+        }
+
+        @Override
+        public SeekPoints getSeekPoints(long timeUs) {
+            com.google.android.exoplayer2.extractor.SeekPoint seekPoint =
+                    new com.google.android.exoplayer2.extractor.SeekPoint(
+                            timeUs, /* position= */ 0);
+            return new SeekPoints(seekPoint, seekPoint);
+        }
+    }
+
     /** Creates extractor instances. */
     private interface ExtractorFactory {
 
@@ -1634,6 +1854,16 @@ public final class MediaParser {
     }
 
     // Private static methods.
+
+    private static Format toExoPlayerCaptionFormat(MediaFormat mediaFormat) {
+        Format.Builder formatBuilder =
+                new Format.Builder().setSampleMimeType(mediaFormat.getString(MediaFormat.KEY_MIME));
+        if (mediaFormat.containsKey(MediaFormat.KEY_CAPTION_SERVICE_NUMBER)) {
+            formatBuilder.setAccessibilityChannel(
+                    mediaFormat.getInteger(MediaFormat.KEY_CAPTION_SERVICE_NUMBER));
+        }
+        return formatBuilder.build();
+    }
 
     private static MediaFormat toMediaFormat(Format format) {
         MediaFormat result = new MediaFormat();
@@ -1703,12 +1933,32 @@ public final class MediaParser {
             // format for convenient use from ExoPlayer.
             result.setString("crypto-mode-fourcc", format.drmInitData.schemeType);
         }
+        if (format.subsampleOffsetUs != Format.OFFSET_SAMPLE_RELATIVE) {
+            result.setLong("subsample-offset-us-long", format.subsampleOffsetUs);
+        }
         // LACK OF SUPPORT FOR:
-        //    format.containerMimeType;
         //    format.id;
         //    format.metadata;
         //    format.stereoMode;
         return result;
+    }
+
+    private static ByteBuffer toByteBuffer(long[] longArray) {
+        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(longArray.length * Long.BYTES);
+        for (long element : longArray) {
+            byteBuffer.putLong(element);
+        }
+        byteBuffer.flip();
+        return byteBuffer;
+    }
+
+    private static ByteBuffer toByteBuffer(int[] intArray) {
+        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(intArray.length * Integer.BYTES);
+        for (int element : intArray) {
+            byteBuffer.putInt(element);
+        }
+        byteBuffer.flip();
+        return byteBuffer;
     }
 
     private static String toTypeString(int type) {
@@ -1866,6 +2116,15 @@ public final class MediaParser {
         expectedTypeByParameterName.put(PARAMETER_INCLUDE_SUPPLEMENTAL_DATA, Boolean.class);
         expectedTypeByParameterName.put(PARAMETER_IGNORE_TIMESTAMP_OFFSET, Boolean.class);
         expectedTypeByParameterName.put(PARAMETER_EAGERLY_EXPOSE_TRACKTYPE, Boolean.class);
+        expectedTypeByParameterName.put(PARAMETER_EXPOSE_DUMMY_SEEKMAP, Boolean.class);
+        expectedTypeByParameterName.put(
+                PARAMETER_EXPOSE_CHUNK_INDEX_AS_MEDIA_FORMAT, Boolean.class);
+        expectedTypeByParameterName.put(
+                PARAMETER_OVERRIDE_IN_BAND_CAPTION_DECLARATIONS, Boolean.class);
+        expectedTypeByParameterName.put(PARAMETER_EXPOSE_EMSG_TRACK, Boolean.class);
+        // We do not check PARAMETER_EXPOSE_CAPTION_FORMATS here, and we do it in setParameters
+        // instead. Checking that the value is a List is insufficient to catch wrong parameter
+        // value types.
         EXPECTED_TYPE_BY_PARAMETER_NAME = Collections.unmodifiableMap(expectedTypeByParameterName);
     }
 }

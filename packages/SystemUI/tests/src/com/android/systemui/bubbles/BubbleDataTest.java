@@ -177,7 +177,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA1.getKey(), BubbleController.DISMISS_USER_GESTURE);
 
         // Verify
@@ -278,7 +278,7 @@ public class BubbleDataTest extends SysuiTestCase {
         assertBubbleRemoved(mBubbleA1, BubbleController.DISMISS_AGED);
         assertOverflowChangedTo(ImmutableList.of(mBubbleA1));
 
-        Bubble bubbleA1 = mBubbleData.getOrCreateBubble(mEntryA1);
+        Bubble bubbleA1 = mBubbleData.getOrCreateBubble(mEntryA1, null /* persistedBubble */);
         bubbleA1.markUpdatedAt(7000L);
         mBubbleData.notificationEntryUpdated(bubbleA1, false /* suppressFlyout*/,
                 true /* showInShade */);
@@ -300,13 +300,13 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         mBubbleData.setMaxOverflowBubbles(1);
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA1.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertOverflowChangedTo(ImmutableList.of(mBubbleA1));
 
         // Overflow max of 1 is reached; A1 is oldest, so it gets removed
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA2.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertOverflowChangedTo(ImmutableList.of(mBubbleA2));
@@ -328,13 +328,13 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(mEntryA1.getKey(),
+        mBubbleData.dismissBubbleWithKey(mEntryA1.getKey(),
                 BubbleController.DISMISS_NOTIF_CANCEL);
         verifyUpdateReceived();
         assertOverflowChangedTo(ImmutableList.of(mBubbleA2));
 
         // Test
-        mBubbleData.notificationEntryRemoved(mEntryA2.getKey(),
+        mBubbleData.dismissBubbleWithKey(mEntryA2.getKey(),
                 BubbleController.DISMISS_GROUP_CANCELLED);
         verifyUpdateReceived();
         assertOverflowChangedTo(ImmutableList.of());
@@ -415,7 +415,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA2.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         // TODO: this should fail if things work as I expect them to?
@@ -436,7 +436,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA1.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertOrderNotChanged();
@@ -456,7 +456,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA2.getKey(), BubbleController.DISMISS_NOTIF_CANCEL);
         verifyUpdateReceived();
         assertSelectionChangedTo(mBubbleB2);
@@ -531,13 +531,13 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA1.getKey(), BubbleController.DISMISS_USER_GESTURE);
 
         // Verify the selection was cleared.
         verifyUpdateReceived();
         assertThat(mBubbleData.isExpanded()).isFalse();
-        assertSelectionCleared();
+        assertThat(mBubbleData.getSelectedBubble()).isNull();
     }
 
     // EXPANDED / ADD / UPDATE
@@ -632,7 +632,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryB2.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertOrderChangedTo(mBubbleA2, mBubbleB1, mBubbleA1);
@@ -657,12 +657,12 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA2.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertSelectionChangedTo(mBubbleB1);
 
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryB1.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertSelectionChangedTo(mBubbleA1);
@@ -777,7 +777,7 @@ public class BubbleDataTest extends SysuiTestCase {
         mBubbleData.setListener(mListener);
 
         // Test
-        mBubbleData.notificationEntryRemoved(
+        mBubbleData.dismissBubbleWithKey(
                 mEntryA1.getKey(), BubbleController.DISMISS_USER_GESTURE);
         verifyUpdateReceived();
         assertExpandedChangedTo(false);
@@ -890,7 +890,7 @@ public class BubbleDataTest extends SysuiTestCase {
     private void sendUpdatedEntryAtTime(NotificationEntry entry, long postTime) {
         setPostTime(entry, postTime);
         // BubbleController calls this:
-        Bubble b = mBubbleData.getOrCreateBubble(entry);
+        Bubble b = mBubbleData.getOrCreateBubble(entry, null /* persistedBubble */);
         // And then this
         mBubbleData.notificationEntryUpdated(b, false /* suppressFlyout*/,
                 true /* showInShade */);

@@ -23,7 +23,6 @@ import static android.app.WindowConfiguration.ACTIVITY_TYPE_UNDEFINED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
 import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_SPLIT_SCREEN_PRIMARY;
-import static android.app.WindowConfiguration.WINDOWING_MODE_SPLIT_SCREEN_SECONDARY;
 import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
 import static android.app.WindowConfiguration.activityTypeToString;
 import static android.app.WindowConfiguration.windowingModeToString;
@@ -272,9 +271,6 @@ public class ActivityStack extends Task {
 
     private final AnimatingActivityRegistry mAnimatingActivityRegistry =
             new AnimatingActivityRegistry();
-
-    /** Stores the override windowing-mode from before a transient mode change (eg. split) */
-    private int mRestoreOverrideWindowingMode = WINDOWING_MODE_UNDEFINED;
 
     private boolean mTopActivityOccludesKeyguard;
     private ActivityRecord mTopDismissingKeyguardActivity;
@@ -670,19 +666,6 @@ public class ActivityStack extends Task {
     }
 
     /**
-     * A transient windowing mode is one which activities enter into temporarily. Examples of this
-     * are Split window modes and pip. Non-transient modes are modes that displays can adopt.
-     *
-     * @param windowingMode the windowingMode to test for transient-ness.
-     * @return {@code true} if the windowing mode is transient, {@code false} otherwise.
-     */
-    private static boolean isTransientWindowingMode(int windowingMode) {
-        return windowingMode == WINDOWING_MODE_PINNED
-                || windowingMode == WINDOWING_MODE_SPLIT_SCREEN_PRIMARY
-                || windowingMode == WINDOWING_MODE_SPLIT_SCREEN_SECONDARY;
-    }
-
-    /**
      * Specialization of {@link #setWindowingMode(int)} for this subclass.
      *
      * @param preferredWindowingMode the preferred windowing mode. This may not be honored depending
@@ -706,11 +689,6 @@ public class ActivityStack extends Task {
         final int currentOverrideMode = getRequestedOverrideWindowingMode();
         final Task topTask = getTopMostTask();
         int windowingMode = preferredWindowingMode;
-        if (preferredWindowingMode == WINDOWING_MODE_UNDEFINED
-                && isTransientWindowingMode(currentMode)) {
-            // Leaving a transient mode. Interpret UNDEFINED as "restore"
-            windowingMode = mRestoreOverrideWindowingMode;
-        }
 
         // Need to make sure windowing mode is supported. If we in the process of creating the stack
         // no need to resolve the windowing mode again as it is already resolved to the right mode.
@@ -720,29 +698,16 @@ public class ActivityStack extends Task {
                 windowingMode = WINDOWING_MODE_UNDEFINED;
             }
         }
-        if (taskDisplayArea.getRootSplitScreenPrimaryTask() == this
-                && windowingMode == WINDOWING_MODE_SPLIT_SCREEN_SECONDARY) {
-            // Resolution to split-screen secondary for the primary split-screen stack means
-            // we want to leave split-screen mode.
-            windowingMode = mRestoreOverrideWindowingMode;
-        }
 
         final boolean alreadyInSplitScreenMode = taskDisplayArea.isSplitScreenModeActivated();
 
-        // Take any required action due to us not supporting the preferred windowing mode.
-        if (alreadyInSplitScreenMode && windowingMode == WINDOWING_MODE_FULLSCREEN
+        if (creating && alreadyInSplitScreenMode && windowingMode == WINDOWING_MODE_FULLSCREEN
                 && isActivityTypeStandardOrUndefined()) {
-            final boolean preferredSplitScreen =
-                    preferredWindowingMode == WINDOWING_MODE_SPLIT_SCREEN_PRIMARY
-                    || preferredWindowingMode == WINDOWING_MODE_SPLIT_SCREEN_SECONDARY;
-            if (preferredSplitScreen || creating) {
-                // Looks like we can't launch in split screen mode or the stack we are launching
-                // doesn't support split-screen mode, go ahead an dismiss split-screen and display a
-                // warning toast about it.
-                mAtmService.getTaskChangeNotificationController()
-                        .notifyActivityDismissingDockedStack();
-                taskDisplayArea.onSplitScreenModeDismissed(this);
-            }
+            // If the stack is being created explicitly in fullscreen mode, dismiss split-screen
+            // and display a warning toast about it.
+            mAtmService.getTaskChangeNotificationController()
+                    .notifyActivityDismissingDockedStack();
+            taskDisplayArea.onSplitScreenModeDismissed(this);
         }
 
         if (currentMode == windowingMode) {
@@ -805,9 +770,6 @@ public class ActivityStack extends Task {
                         + " while there is already one isn't currently supported");
                 //return;
             }
-            if (isTransientWindowingMode(windowingMode) && !isTransientWindowingMode(currentMode)) {
-                mRestoreOverrideWindowingMode = currentOverrideMode;
-            }
 
             mTmpRect2.setEmpty();
             if (windowingMode != WINDOWING_MODE_FULLSCREEN) {
@@ -827,6 +789,22 @@ public class ActivityStack extends Task {
 
         mRootWindowContainer.ensureActivitiesVisible(null, 0, PRESERVE_WINDOWS);
         mRootWindowContainer.resumeFocusedStacksTopActivities();
+
+        final boolean pinnedToFullscreen = currentMode == WINDOWING_MODE_PINNED
+                && windowingMode == WINDOWING_MODE_FULLSCREEN;
+        if (pinnedToFullscreen && topActivity != null && !isForceHidden()) {
+            mDisplayContent.getPinnedStackController().setPipWindowingModeChanging(true);
+            try {
+                // Report orientation as soon as possible so that the display can freeze earlier if
+                // the display orientation will be changed. Because the surface bounds of activity
+                // may have been set to fullscreen but the activity hasn't redrawn its content yet,
+                // the rotation animation needs to capture snapshot earlier to avoid animating from
+                // an intermediate state.
+                topActivity.reportDescendantOrientationChangeIfNeeded();
+            } finally {
+                mDisplayContent.getPinnedStackController().setPipWindowingModeChanging(false);
+            }
+        }
     }
 
     @Override
@@ -843,7 +821,7 @@ public class ActivityStack extends Task {
     /** Resume next focusable stack after reparenting to another display. */
     void postReparent() {
         adjustFocusToNextFocusableTask("reparent", true /* allowFocusSelf */,
-                true /* moveParentsToTop */);
+                true /* moveDisplayToTop */);
         mRootWindowContainer.resumeFocusedStacksTopActivities();
         // Update visibility of activities before notifying WM. This way it won't try to resize
         // windows that are no longer visible.
@@ -975,6 +953,7 @@ public class ActivityStack extends Task {
     void minimalResumeActivityLocked(ActivityRecord r) {
         if (DEBUG_STATES) Slog.v(TAG_STATES, "Moving to RESUMED: " + r + " (starting new instance)"
                 + " callers=" + Debug.getCallers(5));
+        r.callServiceTrackeronActivityStatechange(RESUMED, true);
         r.setState(RESUMED, "minimalResumeActivityLocked");
         r.completeResumeLocked();
     }
@@ -1117,6 +1096,7 @@ public class ActivityStack extends Task {
         if (DEBUG_STATES) Slog.v(TAG_STATES, "Moving to PAUSING: " + prev);
         else if (DEBUG_PAUSE) Slog.v(TAG_PAUSE, "Start pausing: " + prev);
 
+        prev.callServiceTrackeronActivityStatechange(PAUSING, true);
         if (mActivityTrigger != null) {
             mActivityTrigger.activityPauseTrigger(prev.intent, prev.info, prev.info.applicationInfo);
         }
@@ -1216,6 +1196,7 @@ public class ActivityStack extends Task {
         if (prev != null) {
             prev.setWillCloseOrEnterPip(false);
             final boolean wasStopping = prev.isState(STOPPING);
+            prev.callServiceTrackeronActivityStatechange(PAUSED, true);
             prev.setState(PAUSED, "completePausedLocked");
             if (prev.finishing) {
                 if (DEBUG_PAUSE) Slog.v(TAG_PAUSE, "Executing finish of activity: " + prev);
@@ -1232,6 +1213,7 @@ public class ActivityStack extends Task {
                     // We are also stopping, the stop request must have gone soon after the pause.
                     // We can't clobber it, because the stop confirmation will not be handled.
                     // We don't need to schedule another stop, we only need to let it happen.
+                    prev.callServiceTrackeronActivityStatechange(STOPPING, true);
                     prev.setState(STOPPING, "completePausedLocked");
                 } else if (!prev.mVisibleRequested || shouldSleepOrShutDownActivities()) {
                     // Clear out any deferred client hide we might currently have.
@@ -1682,6 +1664,7 @@ public class ActivityStack extends Task {
 
         if (DEBUG_SWITCH) Slog.v(TAG_SWITCH, "Resuming " + next);
 
+        next.callServiceTrackeronActivityStatechange(RESUMED, true);
         if (mActivityTrigger != null) {
             mActivityTrigger.activityResumeTrigger(next.intent, next.info, next.info.applicationInfo,
                     next.occludesParent());
@@ -1732,7 +1715,8 @@ public class ActivityStack extends Task {
             // happens to be sitting towards the end.
             if (next.attachedToProcess()) {
                 next.app.updateProcessInfo(false /* updateServiceConnectionActivities */,
-                        true /* activityChange */, false /* updateOomAdj */);
+                        true /* activityChange */, false /* updateOomAdj */,
+                        false /* addPendingTopUid */);
             } else if (!next.isProcessRunning()) {
                 // Since the start-process is asynchronous, if we already know the process of next
                 // activity isn't running, we can start the process earlier to save the time to wait
@@ -1902,11 +1886,11 @@ public class ActivityStack extends Task {
 
             if (DEBUG_STATES) Slog.v(TAG_STATES, "Moving to RESUMED: " + next
                     + " (in existing)");
-
             next.setState(RESUMED, "resumeTopActivityInnerLocked");
 
             next.app.updateProcessInfo(false /* updateServiceConnectionActivities */,
-                    true /* activityChange */, true /* updateOomAdj */);
+                    true /* activityChange */, true /* updateOomAdj */,
+                    true /* addPendingTopUid */);
 
             // Have the window manager re-evaluate the orientation of
             // the screen based on the new activity order.
@@ -1989,10 +1973,12 @@ public class ActivityStack extends Task {
                 // Whoops, need to restart this activity!
                 if (DEBUG_STATES) Slog.v(TAG_STATES, "Resume failed; resetting state to "
                         + lastState + ": " + next);
+                next.callServiceTrackeronActivityStatechange(lastState, true);
                 next.setState(lastState, "resumeTopActivityInnerLocked");
 
                 // lastResumedActivity being non-null implies there is a lastStack present.
                 if (lastResumedActivity != null) {
+                    lastResumedActivity.callServiceTrackeronActivityStatechange(RESUMED, true);
                     lastResumedActivity.setState(RESUMED, "resumeTopActivityInnerLocked");
                 }
 
@@ -3034,6 +3020,7 @@ public class ActivityStack extends Task {
                         + " other stack to this stack mResumedActivity=" + mResumedActivity
                         + " other mResumedActivity=" + topRunningActivity);
             }
+            topRunningActivity.callServiceTrackeronActivityStatechange(RESUMED, true);
             topRunningActivity.setState(RESUMED, "positionChildAt");
         }
 
@@ -3069,6 +3056,7 @@ public class ActivityStack extends Task {
         // so that we don't resume the same activity again in the new stack.
         // Apps may depend on onResume()/onPause() being called in pairs.
         if (setResume) {
+            r.callServiceTrackeronActivityStatechange(RESUMED, true);
             r.setState(RESUMED, "moveToFrontAndResumeStateIfNeeded");
         }
         // If the activity was previously pausing, then ensure we transfer that as well
@@ -3302,22 +3290,22 @@ public class ActivityStack extends Task {
 
     @Override
     void dump(PrintWriter pw, String prefix, boolean dumpAll) {
-        pw.println(prefix + "mStackId=" + getRootTaskId());
-        pw.println(prefix + "mDeferRemoval=" + mDeferRemoval);
-        pw.println(prefix + "mBounds=" + getRawBounds().toShortString());
-        for (int taskNdx = mChildren.size() - 1; taskNdx >= 0; taskNdx--) {
-            mChildren.get(taskNdx).dump(pw, prefix + "  ", dumpAll);
+        if (mDeferRemoval) {
+            pw.println(prefix + "mDeferRemoval=true");
         }
+        super.dump(pw, prefix, dumpAll);
         if (!mExitingActivities.isEmpty()) {
             pw.println();
-            pw.println("  Exiting application tokens:");
+            pw.println(prefix + "Exiting application tokens:");
+            final String doublePrefix = prefix + "  ";
             for (int i = mExitingActivities.size() - 1; i >= 0; i--) {
                 WindowToken token = mExitingActivities.get(i);
-                pw.print("  Exiting App #"); pw.print(i);
+                pw.print(doublePrefix + "Exiting App #" + i);
                 pw.print(' '); pw.print(token);
                 pw.println(':');
-                token.dump(pw, "    ", dumpAll);
+                token.dump(pw, doublePrefix, dumpAll);
             }
+            pw.println();
         }
         mAnimatingActivityRegistry.dump(pw, "AnimatingApps:", prefix);
     }

@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+java_defaults {
+    name: "wifi-module-sdk-version-defaults",
+    min_sdk_version: "30",
+    target_sdk_version: "30",
+}
+
 filegroup {
     name: "framework-wifi-updatable-exported-aidl-sources",
     srcs: ["aidl-export/**/*.aidl"],
@@ -73,6 +79,7 @@ test_access_hidden_api_whitelist = [
 // classes before they are renamed.
 java_library {
     name: "framework-wifi-pre-jarjar",
+    defaults: ["wifi-module-sdk-version-defaults"],
     sdk_version: "module_current",
     static_libs: [
         "framework-wifi-util-lib",
@@ -98,7 +105,10 @@ java_library {
 // post-jarjar version of framework-wifi
 java_sdk_library {
     name: "framework-wifi",
-    defaults: ["framework-module-defaults"],
+    defaults: [
+        "framework-module-defaults",
+        "wifi-module-sdk-version-defaults",
+    ],
     static_libs: [
         "framework-wifi-util-lib",
         "android.hardware.wifi-V1.0-java-constants",
@@ -110,11 +120,6 @@ java_sdk_library {
         ":framework-wifi-updatable-sources",
         ":framework-wifi-util-lib-aidls",
     ],
-
-    // TODO(b/155480189) - Remove naming_scheme once references have been resolved.
-    // Temporary java_sdk_library component naming scheme to use to ease the transition from separate
-    // modules to java_sdk_library.
-    naming_scheme: "framework-modules",
 
     jarjar_rules: ":wifi-jarjar-rules",
 
@@ -128,10 +133,10 @@ java_sdk_library {
     visibility: ["//visibility:public"],
 
     // Restrict access to implementation library.
-    impl_library_visibility: [
-        "//visibility:override", // Ignore the visibility property.
-        "//frameworks/opt/net/wifi/service:__subpackages__",
-    ] + test_access_hidden_api_whitelist,
+//    impl_library_visibility: [
+//        "//visibility:override", // Ignore the visibility property.
+//        "//frameworks/opt/net/wifi/service:__subpackages__",
+//    ] + test_access_hidden_api_whitelist,
 
     apex_available: [
         "com.android.wifi",
@@ -140,7 +145,6 @@ java_sdk_library {
     permitted_packages: [
         "android.hardware.wifi",
         "android.net.wifi",
-        "android.x.net.wifi",
         // Created by jarjar rules.
         "com.android.wifi.x",
     ],
@@ -159,7 +163,21 @@ java_defaults {
         // if sdk_version="" this gets automatically included, but here we need to add manually.
         "framework-res",
     ],
-    visibility: test_access_hidden_api_whitelist,
+     visibility: test_access_hidden_api_whitelist,
+}
+
+java_defaults {
+    name: "framework-wifi-vendor-hide-access-defaults",
+    sdk_version: "core_platform", // tests can use @CorePlatformApi's
+    libs: [
+        // order matters: classes in framework-wifi are resolved before framework, meaning
+        // @hide APIs in framework-wifi are resolved before @SystemApi stubs in framework
+        "framework-wifi.impl",
+        "framework",
+
+        // if sdk_version="" this gets automatically included, but here we need to add manually.
+        "framework-res",
+    ],
 }
 
 filegroup {

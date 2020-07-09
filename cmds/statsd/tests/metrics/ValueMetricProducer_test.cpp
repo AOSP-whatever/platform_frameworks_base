@@ -111,15 +111,17 @@ public:
         EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _))
                 .WillRepeatedly(Return());
 
-        sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
-                kConfigKey, metric, -1 /*-1 meaning no condition*/, wizard, logEventMatcherIndex,
-                eventMatcherWizard, tagId, bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+        sp<ValueMetricProducer> valueProducer =
+                new ValueMetricProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
+                                        wizard, logEventMatcherIndex, eventMatcherWizard, tagId,
+                                        bucketStartTimeNs, bucketStartTimeNs, pullerManager);
         valueProducer->prepareFirstBucket();
         return valueProducer;
     }
 
     static sp<ValueMetricProducer> createValueProducerWithCondition(
-            sp<MockStatsPullerManager>& pullerManager, ValueMetric& metric) {
+            sp<MockStatsPullerManager>& pullerManager, ValueMetric& metric,
+            ConditionState conditionAfterFirstBucketPrepared) {
         UidMap uidMap;
         SimpleAtomMatcher atomMatcher;
         atomMatcher.set_atom_id(tagId);
@@ -133,31 +135,11 @@ public:
                 .WillRepeatedly(Return());
 
         sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
-                kConfigKey, metric, 1, wizard, logEventMatcherIndex, eventMatcherWizard, tagId,
-                bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+                kConfigKey, metric, 0 /*condition index*/, {ConditionState::kUnknown}, wizard,
+                logEventMatcherIndex, eventMatcherWizard, tagId, bucketStartTimeNs,
+                bucketStartTimeNs, pullerManager);
         valueProducer->prepareFirstBucket();
-        valueProducer->mCondition = ConditionState::kFalse;
-        return valueProducer;
-    }
-
-    static sp<ValueMetricProducer> createValueProducerWithNoInitialCondition(
-            sp<MockStatsPullerManager>& pullerManager, ValueMetric& metric) {
-        UidMap uidMap;
-        SimpleAtomMatcher atomMatcher;
-        atomMatcher.set_atom_id(tagId);
-        sp<EventMatcherWizard> eventMatcherWizard =
-                new EventMatcherWizard({new SimpleLogMatchingTracker(
-                        atomMatcherId, logEventMatcherIndex, atomMatcher, uidMap)});
-        sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
-        EXPECT_CALL(*pullerManager, RegisterReceiver(tagId, kConfigKey, _, _, _))
-                .WillOnce(Return());
-        EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _))
-                .WillRepeatedly(Return());
-
-        sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
-                kConfigKey, metric, 1, wizard, logEventMatcherIndex, eventMatcherWizard, tagId,
-                bucketStartTimeNs, bucketStartTimeNs, pullerManager);
-        valueProducer->prepareFirstBucket();
+        valueProducer->mCondition = conditionAfterFirstBucketPrepared;
         return valueProducer;
     }
 
@@ -176,11 +158,38 @@ public:
                 .WillOnce(Return());
         EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _))
                 .WillRepeatedly(Return());
+
         sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
-                kConfigKey, metric, -1 /* no condition */, wizard, logEventMatcherIndex,
+                kConfigKey, metric, -1 /* no condition */, {}, wizard, logEventMatcherIndex,
                 eventMatcherWizard, tagId, bucketStartTimeNs, bucketStartTimeNs, pullerManager, {},
                 {}, slicedStateAtoms, stateGroupMap);
         valueProducer->prepareFirstBucket();
+        return valueProducer;
+    }
+
+    static sp<ValueMetricProducer> createValueProducerWithConditionAndState(
+            sp<MockStatsPullerManager>& pullerManager, ValueMetric& metric,
+            vector<int32_t> slicedStateAtoms,
+            unordered_map<int, unordered_map<int, int64_t>> stateGroupMap,
+            ConditionState conditionAfterFirstBucketPrepared) {
+        UidMap uidMap;
+        SimpleAtomMatcher atomMatcher;
+        atomMatcher.set_atom_id(tagId);
+        sp<EventMatcherWizard> eventMatcherWizard =
+                new EventMatcherWizard({new SimpleLogMatchingTracker(
+                        atomMatcherId, logEventMatcherIndex, atomMatcher, uidMap)});
+        sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+        EXPECT_CALL(*pullerManager, RegisterReceiver(tagId, kConfigKey, _, _, _))
+                .WillOnce(Return());
+        EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _))
+                .WillRepeatedly(Return());
+
+        sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
+                kConfigKey, metric, 0 /* condition tracker index */, {ConditionState::kUnknown},
+                wizard, logEventMatcherIndex, eventMatcherWizard, tagId, bucketStartTimeNs,
+                bucketStartTimeNs, pullerManager, {}, {}, slicedStateAtoms, stateGroupMap);
+        valueProducer->prepareFirstBucket();
+        valueProducer->mCondition = conditionAfterFirstBucketPrepared;
         return valueProducer;
     }
 
@@ -202,6 +211,13 @@ public:
 
     static ValueMetric createMetricWithState(string state) {
         ValueMetric metric = ValueMetricProducerTestHelper::createMetric();
+        metric.add_slice_by_state(StringToId(state));
+        return metric;
+    }
+
+    static ValueMetric createMetricWithConditionAndState(string state) {
+        ValueMetric metric = ValueMetricProducerTestHelper::createMetric();
+        metric.set_condition(StringToId("SCREEN_ON"));
         metric.add_slice_by_state(StringToId(state));
         return metric;
     }
@@ -232,9 +248,9 @@ TEST(ValueMetricProducerTest, TestCalcPreviousBucketEndTime) {
 
     // statsd started long ago.
     // The metric starts in the middle of the bucket
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, wizard,
-                                      logEventMatcherIndex, eventMatcherWizard, -1, startTimeBase,
-                                      22, pullerManager);
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
+                                      wizard, logEventMatcherIndex, eventMatcherWizard, -1,
+                                      startTimeBase, 22, pullerManager);
     valueProducer.prepareFirstBucket();
 
     EXPECT_EQ(startTimeBase, valueProducer.calcPreviousBucketEndTime(60 * NS_PER_SEC + 10));
@@ -262,8 +278,8 @@ TEST(ValueMetricProducerTest, TestFirstBucket) {
 
     // statsd started long ago.
     // The metric starts in the middle of the bucket
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, wizard,
-                                      logEventMatcherIndex, eventMatcherWizard, -1, 5,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
+                                      wizard, logEventMatcherIndex, eventMatcherWizard, -1, 5,
                                       600 * NS_PER_SEC + NS_PER_SEC / 2, pullerManager);
     valueProducer.prepareFirstBucket();
 
@@ -427,7 +443,7 @@ TEST(ValueMetricProducerTest, TestPulledEventsWithFiltering) {
             }));
 
     sp<ValueMetricProducer> valueProducer = new ValueMetricProducer(
-            kConfigKey, metric, -1 /*-1 meaning no condition*/, wizard, logEventMatcherIndex,
+            kConfigKey, metric, -1 /*-1 meaning no condition*/, {}, wizard, logEventMatcherIndex,
             eventMatcherWizard, tagId, bucketStartTimeNs, bucketStartTimeNs, pullerManager);
     valueProducer->prepareFirstBucket();
 
@@ -629,7 +645,8 @@ TEST(ValueMetricProducerTest, TestEventsWithNonSlicedCondition) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
 
@@ -689,7 +706,8 @@ TEST_P(ValueMetricProducerTest_PartialBucket, TestPushedEvents) {
                     atomMatcherId, logEventMatcherIndex, atomMatcher, uidMap)});
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -762,7 +780,8 @@ TEST_P(ValueMetricProducerTest_PartialBucket, TestPulledValue) {
                 data->push_back(CreateRepeatedValueLogEvent(tagId, partialBucketSplitTimeNs, 120));
                 return true;
             }));
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, tagId, bucketStartTimeNs,
                                       bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
@@ -813,7 +832,8 @@ TEST(ValueMetricProducerTest, TestPulledWithAppUpgradeDisabled) {
     EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _)).WillOnce(Return());
     EXPECT_CALL(*pullerManager, Pull(tagId, kConfigKey, bucketStartTimeNs, _, _))
             .WillOnce(Return(true));
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, tagId, bucketStartTimeNs,
                                       bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
@@ -851,7 +871,8 @@ TEST_P(ValueMetricProducerTest_PartialBucket, TestPulledValueWhileConditionFalse
                 return true;
             }));
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 1);
 
@@ -875,6 +896,7 @@ TEST_P(ValueMetricProducerTest_PartialBucket, TestPulledValueWhileConditionFalse
                                     {bucketStartTimeNs}, {partialBucketSplitTimeNs});
     EXPECT_FALSE(valueProducer->mCondition);
 }
+
 TEST(ValueMetricProducerTest, TestPushedEventsWithoutCondition) {
     ValueMetric metric = ValueMetricProducerTestHelper::createMetric();
 
@@ -887,7 +909,7 @@ TEST(ValueMetricProducerTest, TestPushedEventsWithoutCondition) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -931,9 +953,9 @@ TEST(ValueMetricProducerTest, TestPushedEventsWithCondition) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, 1, wizard, logEventMatcherIndex,
-                                      eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+    ValueMetricProducer valueProducer(kConfigKey, metric, 0, {ConditionState::kUnknown}, wizard,
+                                      logEventMatcherIndex, eventMatcherWizard, -1,
+                                      bucketStartTimeNs, bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
     valueProducer.mCondition = ConditionState::kFalse;
 
@@ -1001,9 +1023,11 @@ TEST(ValueMetricProducerTest, TestAnomalyDetection) {
                     atomMatcherId, logEventMatcherIndex, atomMatcher, uidMap)});
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, wizard,
-                                      logEventMatcherIndex, eventMatcherWizard, -1 /*not pulled*/,
-                                      bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
+                                      wizard, logEventMatcherIndex, eventMatcherWizard,
+                                      -1 /*not pulled*/, bucketStartTimeNs, bucketStartTimeNs,
+                                      pullerManager);
     valueProducer.prepareFirstBucket();
 
     sp<AnomalyTracker> anomalyTracker = valueProducer.addAnomalyTracker(alert, alarmMonitor);
@@ -1158,7 +1182,8 @@ TEST(ValueMetricProducerTest, TestBucketBoundaryWithCondition) {
                 return true;
             }));
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
 
@@ -1229,7 +1254,8 @@ TEST(ValueMetricProducerTest, TestBucketBoundaryWithCondition2) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
 
@@ -1300,7 +1326,7 @@ TEST(ValueMetricProducerTest, TestPushedAggregateMin) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1344,7 +1370,7 @@ TEST(ValueMetricProducerTest, TestPushedAggregateMax) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1387,7 +1413,7 @@ TEST(ValueMetricProducerTest, TestPushedAggregateAvg) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1435,7 +1461,7 @@ TEST(ValueMetricProducerTest, TestPushedAggregateSum) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1479,7 +1505,7 @@ TEST(ValueMetricProducerTest, TestSkipZeroDiffOutput) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1551,7 +1577,7 @@ TEST(ValueMetricProducerTest, TestSkipZeroDiffOutputMultiValue) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, -1, bucketStartTimeNs, bucketStartTimeNs,
                                       pullerManager);
     valueProducer.prepareFirstBucket();
@@ -1944,7 +1970,8 @@ TEST(ValueMetricProducerTest, TestResetBaseOnPullFailAfterConditionChange_EndOfB
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
     // has one slice
@@ -1979,7 +2006,8 @@ TEST(ValueMetricProducerTest, TestResetBaseOnPullFailAfterConditionChange) {
             .WillOnce(Return(false));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
 
@@ -2023,7 +2051,8 @@ TEST(ValueMetricProducerTest, TestResetBaseOnPullFailBeforeConditionChange) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Don't directly set mCondition; the real code never does that. Go through regular code path
     // to avoid unexpected behaviors.
@@ -2057,9 +2086,8 @@ TEST(ValueMetricProducerTest, TestResetBaseOnPullDelayExceeded) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Max delay is set to 0 so pull will exceed max delay.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 1);
@@ -2080,9 +2108,9 @@ TEST(ValueMetricProducerTest, TestResetBaseOnPullTooLate) {
     EXPECT_CALL(*pullerManager, RegisterReceiver(tagId, kConfigKey, _, _, _)).WillOnce(Return());
     EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _)).WillRepeatedly(Return());
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, 1, wizard, logEventMatcherIndex,
-                                      eventMatcherWizard, tagId, bucket2StartTimeNs,
-                                      bucket2StartTimeNs, pullerManager);
+    ValueMetricProducer valueProducer(kConfigKey, metric, 0, {ConditionState::kUnknown}, wizard,
+                                      logEventMatcherIndex, eventMatcherWizard, tagId,
+                                      bucket2StartTimeNs, bucket2StartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
     valueProducer.mCondition = ConditionState::kFalse;
 
@@ -2105,9 +2133,8 @@ TEST(ValueMetricProducerTest, TestBaseSetOnConditionChange) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
     valueProducer->mHasGlobalBase = false;
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 1);
@@ -2142,9 +2169,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenOneConditionFailed
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-
-    valueProducer->mCondition = ConditionState::kTrue;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kTrue);
 
     // Bucket start.
     vector<shared_ptr<LogEvent>> allData;
@@ -2218,8 +2244,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenGuardRailHit) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 2);
     EXPECT_EQ(true, valueProducer->mCurrentBucketIsSkipped);
@@ -2283,9 +2309,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenInitialPullFailed)
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-
-    valueProducer->mCondition = ConditionState::kTrue;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kTrue);
 
     // Bucket start.
     vector<shared_ptr<LogEvent>> allData;
@@ -2363,9 +2388,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenLastPullFailed) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-
-    valueProducer->mCondition = ConditionState::kTrue;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kTrue);
 
     // Bucket start.
     vector<shared_ptr<LogEvent>> allData;
@@ -2468,7 +2492,8 @@ TEST(ValueMetricProducerTest, TestEmptyDataResetsBase_onConditionChanged) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
     ASSERT_EQ(1UL, valueProducer->mCurrentSlicedBucket.size());
@@ -2518,7 +2543,8 @@ TEST(ValueMetricProducerTest, TestEmptyDataResetsBase_onBucketBoundary) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
     valueProducer->onConditionChanged(false, bucketStartTimeNs + 11);
@@ -2566,7 +2592,8 @@ TEST(ValueMetricProducerTest, TestPartialResetOnBucketBoundaries) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
     ASSERT_EQ(1UL, valueProducer->mCurrentSlicedBucket.size());
@@ -2673,8 +2700,8 @@ TEST(ValueMetricProducerTest, TestBucketBoundariesOnConditionChange) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kUnknown;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kUnknown);
 
     valueProducer->onConditionChanged(false, bucketStartTimeNs);
     ASSERT_EQ(0UL, valueProducer->mCurrentSlicedBucket.size());
@@ -2814,7 +2841,8 @@ TEST(ValueMetricProducerTest, TestDataIsNotUpdatedWhenNoConditionChanged) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
     valueProducer->onConditionChanged(false, bucketStartTimeNs + 10);
@@ -2866,7 +2894,8 @@ TEST(ValueMetricProducerTest, TestBucketInvalidIfGlobalBaseIsNotSet) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
     valueProducer->onConditionChanged(true, bucket2StartTimeNs + 10);
 
     vector<shared_ptr<LogEvent>> allData;
@@ -2911,7 +2940,7 @@ TEST(ValueMetricProducerTest, TestPullNeededFastDump) {
                 return true;
             }));
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, tagId, bucketStartTimeNs,
                                       bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
@@ -2949,7 +2978,7 @@ TEST(ValueMetricProducerTest, TestFastDumpWithoutCurrentBucket) {
                 return true;
             }));
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, tagId, bucketStartTimeNs,
                                       bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
@@ -3002,7 +3031,7 @@ TEST(ValueMetricProducerTest, TestPullNeededNoTimeConstraints) {
                 return true;
             }));
 
-    ValueMetricProducer valueProducer(kConfigKey, metric, -1, wizard, logEventMatcherIndex,
+    ValueMetricProducer valueProducer(kConfigKey, metric, -1, {}, wizard, logEventMatcherIndex,
                                       eventMatcherWizard, tagId, bucketStartTimeNs,
                                       bucketStartTimeNs, pullerManager);
     valueProducer.prepareFirstBucket();
@@ -3058,8 +3087,8 @@ TEST(ValueMetricProducerTest, TestPulledData_noDiff_withMultipleConditionChanges
                 return true;
             }));
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
     valueProducer->onConditionChanged(false, bucketStartTimeNs + 50);
@@ -3099,8 +3128,8 @@ TEST(ValueMetricProducerTest, TestPulledData_noDiff_bucketBoundaryTrue) {
                 return true;
             }));
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
 
@@ -3124,8 +3153,8 @@ TEST(ValueMetricProducerTest, TestPulledData_noDiff_bucketBoundaryFalse) {
 
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Now the alarm is delivered. Condition is off though.
     vector<shared_ptr<LogEvent>> allData;
@@ -3152,8 +3181,8 @@ TEST(ValueMetricProducerTest, TestPulledData_noDiff_withFailure) {
             }))
             .WillOnce(Return(false));
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
-    valueProducer->mCondition = ConditionState::kFalse;
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 8);
     valueProducer->onConditionChanged(false, bucketStartTimeNs + 50);
@@ -3191,7 +3220,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenDumpReportRequeste
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 20);
@@ -3236,7 +3266,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenConditionEventWron
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 50);
@@ -3264,11 +3295,15 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenConditionEventWron
               report.value_metrics().skipped(0).start_bucket_elapsed_millis());
     EXPECT_EQ(NanoToMillis(bucket2StartTimeNs + 100),
               report.value_metrics().skipped(0).end_bucket_elapsed_millis());
-    ASSERT_EQ(1, report.value_metrics().skipped(0).drop_event_size());
+    ASSERT_EQ(2, report.value_metrics().skipped(0).drop_event_size());
 
     auto dropEvent = report.value_metrics().skipped(0).drop_event(0);
     EXPECT_EQ(BucketDropReason::EVENT_IN_WRONG_BUCKET, dropEvent.drop_reason());
     EXPECT_EQ(NanoToMillis(bucket2StartTimeNs - 100), dropEvent.drop_time_millis());
+
+    dropEvent = report.value_metrics().skipped(0).drop_event(1);
+    EXPECT_EQ(BucketDropReason::CONDITION_UNKNOWN, dropEvent.drop_reason());
+    EXPECT_EQ(NanoToMillis(bucket2StartTimeNs + 100), dropEvent.drop_time_millis());
 }
 
 /*
@@ -3298,7 +3333,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenAccumulateEventWro
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 50);
@@ -3363,8 +3399,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenConditionUnknown) 
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithNoInitialCondition(pullerManager,
-                                                                                     metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kUnknown);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 50);
@@ -3413,7 +3449,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenPullFailed) {
             .WillOnce(Return(false));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 50);
@@ -3468,7 +3505,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenMultipleBucketsSki
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
@@ -3542,7 +3580,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestBucketDropWhenBucketTooSmall) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
@@ -3579,7 +3618,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestBucketDropWhenDataUnavailable) {
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kFalse);
 
     // Check dump report.
     ProtoOutputStream output;
@@ -3602,6 +3642,94 @@ TEST(ValueMetricProducerTest_BucketDrop, TestBucketDropWhenDataUnavailable) {
     auto dropEvent = report.value_metrics().skipped(0).drop_event(0);
     EXPECT_EQ(BucketDropReason::NO_DATA, dropEvent.drop_reason());
     EXPECT_EQ(NanoToMillis(dumpReportTimeNs), dropEvent.drop_time_millis());
+}
+
+/*
+ * Test that all buckets are dropped due to condition unknown until the first onConditionChanged.
+ */
+TEST(ValueMetricProducerTest_BucketDrop, TestConditionUnknownMultipleBuckets) {
+    ValueMetric metric = ValueMetricProducerTestHelper::createMetricWithCondition();
+
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    EXPECT_CALL(*pullerManager, Pull(tagId, kConfigKey, _, _, _))
+            // Condition change to true.
+            .WillOnce(Invoke([](int tagId, const ConfigKey&, const int64_t eventTimeNs,
+                                vector<std::shared_ptr<LogEvent>>* data, bool) {
+                EXPECT_EQ(eventTimeNs, bucket2StartTimeNs + 10 * NS_PER_SEC);
+                data->clear();
+                data->push_back(CreateRepeatedValueLogEvent(
+                        tagId, bucket2StartTimeNs + 10 * NS_PER_SEC, 10));
+                return true;
+            }))
+            // Dump report requested.
+            .WillOnce(Invoke([](int tagId, const ConfigKey&, const int64_t eventTimeNs,
+                                vector<std::shared_ptr<LogEvent>>* data, bool) {
+                EXPECT_EQ(eventTimeNs, bucket2StartTimeNs + 15 * NS_PER_SEC);
+                data->clear();
+                data->push_back(CreateRepeatedValueLogEvent(
+                        tagId, bucket2StartTimeNs + 15 * NS_PER_SEC, 15));
+                return true;
+            }));
+
+    sp<ValueMetricProducer> valueProducer =
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kUnknown);
+
+    // Bucket should be dropped because of condition unknown.
+    int64_t appUpgradeTimeNs = bucketStartTimeNs + 5 * NS_PER_SEC;
+    valueProducer->notifyAppUpgrade(appUpgradeTimeNs);
+
+    // Bucket also dropped due to condition unknown
+    vector<shared_ptr<LogEvent>> allData;
+    allData.clear();
+    allData.push_back(CreateRepeatedValueLogEvent(tagId, bucket2StartTimeNs + 1, 3));
+    valueProducer->onDataPulled(allData, /** succeed */ true, bucket2StartTimeNs);
+
+    // This bucket is also dropped due to condition unknown.
+    int64_t conditionChangeTimeNs = bucket2StartTimeNs + 10 * NS_PER_SEC;
+    valueProducer->onConditionChanged(true, conditionChangeTimeNs);
+
+    // Check dump report.
+    ProtoOutputStream output;
+    std::set<string> strSet;
+    int64_t dumpReportTimeNs = bucket2StartTimeNs + 15 * NS_PER_SEC; // 15 seconds
+    valueProducer->onDumpReport(dumpReportTimeNs, true /* include current bucket */, true,
+                                NO_TIME_CONSTRAINTS /* dumpLatency */, &strSet, &output);
+
+    StatsLogReport report = outputStreamToProto(&output);
+    EXPECT_TRUE(report.has_value_metrics());
+    ASSERT_EQ(0, report.value_metrics().data_size());
+    ASSERT_EQ(3, report.value_metrics().skipped_size());
+
+    EXPECT_EQ(NanoToMillis(bucketStartTimeNs),
+              report.value_metrics().skipped(0).start_bucket_elapsed_millis());
+    EXPECT_EQ(NanoToMillis(appUpgradeTimeNs),
+              report.value_metrics().skipped(0).end_bucket_elapsed_millis());
+    ASSERT_EQ(1, report.value_metrics().skipped(0).drop_event_size());
+
+    auto dropEvent = report.value_metrics().skipped(0).drop_event(0);
+    EXPECT_EQ(BucketDropReason::CONDITION_UNKNOWN, dropEvent.drop_reason());
+    EXPECT_EQ(NanoToMillis(appUpgradeTimeNs), dropEvent.drop_time_millis());
+
+    EXPECT_EQ(NanoToMillis(appUpgradeTimeNs),
+              report.value_metrics().skipped(1).start_bucket_elapsed_millis());
+    EXPECT_EQ(NanoToMillis(bucket2StartTimeNs),
+              report.value_metrics().skipped(1).end_bucket_elapsed_millis());
+    ASSERT_EQ(1, report.value_metrics().skipped(1).drop_event_size());
+
+    dropEvent = report.value_metrics().skipped(1).drop_event(0);
+    EXPECT_EQ(BucketDropReason::CONDITION_UNKNOWN, dropEvent.drop_reason());
+    EXPECT_EQ(NanoToMillis(bucket2StartTimeNs), dropEvent.drop_time_millis());
+
+    EXPECT_EQ(NanoToMillis(bucket2StartTimeNs),
+              report.value_metrics().skipped(2).start_bucket_elapsed_millis());
+    EXPECT_EQ(NanoToMillis(dumpReportTimeNs),
+              report.value_metrics().skipped(2).end_bucket_elapsed_millis());
+    ASSERT_EQ(1, report.value_metrics().skipped(2).drop_event_size());
+
+    dropEvent = report.value_metrics().skipped(2).drop_event(0);
+    EXPECT_EQ(BucketDropReason::CONDITION_UNKNOWN, dropEvent.drop_reason());
+    EXPECT_EQ(NanoToMillis(conditionChangeTimeNs), dropEvent.drop_time_millis());
 }
 
 /*
@@ -3632,7 +3760,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestBucketDropWhenForceBucketSplitBefor
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(pullerManager, metric,
+                                                                            ConditionState::kFalse);
 
     // Condition changed event
     int64_t conditionChangeTimeNs = bucketStartTimeNs + 10;
@@ -3687,8 +3816,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestMultipleBucketDropEvents) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithNoInitialCondition(pullerManager,
-                                                                                     metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kUnknown);
 
     // Condition change event.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
@@ -3756,8 +3885,8 @@ TEST(ValueMetricProducerTest_BucketDrop, TestMaxBucketDropEvents) {
             }));
 
     sp<ValueMetricProducer> valueProducer =
-            ValueMetricProducerTestHelper::createValueProducerWithNoInitialCondition(pullerManager,
-                                                                                     metric);
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric, ConditionState::kUnknown);
 
     // First condition change event causes guardrail to be reached.
     valueProducer->onConditionChanged(true, bucketStartTimeNs + 10);
@@ -3889,13 +4018,13 @@ TEST(ValueMetricProducerTest, TestSlicedState) {
                 return true;
             }));
 
+    StateManager::getInstance().clear();
     sp<ValueMetricProducer> valueProducer =
             ValueMetricProducerTestHelper::createValueProducerWithState(
                     pullerManager, metric, {util::SCREEN_STATE_CHANGED}, {});
     EXPECT_EQ(1, valueProducer->mSlicedStateAtoms.size());
 
     // Set up StateManager and check that StateTrackers are initialized.
-    StateManager::getInstance().clear();
     StateManager::getInstance().registerListener(SCREEN_STATE_ATOM_ID, valueProducer);
     EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
     EXPECT_EQ(1, StateManager::getInstance().getListenersCount(SCREEN_STATE_ATOM_ID));
@@ -4101,12 +4230,12 @@ TEST(ValueMetricProducerTest, TestSlicedStateWithMap) {
         }
     }
 
+    StateManager::getInstance().clear();
     sp<ValueMetricProducer> valueProducer =
             ValueMetricProducerTestHelper::createValueProducerWithState(
                     pullerManager, metric, {util::SCREEN_STATE_CHANGED}, stateGroupMap);
 
     // Set up StateManager and check that StateTrackers are initialized.
-    StateManager::getInstance().clear();
     StateManager::getInstance().registerListener(SCREEN_STATE_ATOM_ID, valueProducer);
     EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
     EXPECT_EQ(1, StateManager::getInstance().getListenersCount(SCREEN_STATE_ATOM_ID));
@@ -4353,12 +4482,12 @@ TEST(ValueMetricProducerTest, TestSlicedStateWithPrimaryField_WithDimensions) {
                 return true;
             }));
 
+    StateManager::getInstance().clear();
     sp<ValueMetricProducer> valueProducer =
             ValueMetricProducerTestHelper::createValueProducerWithState(
                     pullerManager, metric, {UID_PROCESS_STATE_ATOM_ID}, {});
 
     // Set up StateManager and check that StateTrackers are initialized.
-    StateManager::getInstance().clear();
     StateManager::getInstance().registerListener(UID_PROCESS_STATE_ATOM_ID, valueProducer);
     EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
     EXPECT_EQ(1, StateManager::getInstance().getListenersCount(UID_PROCESS_STATE_ATOM_ID));
@@ -4716,6 +4845,212 @@ TEST(ValueMetricProducerTest, TestSlicedStateWithPrimaryField_WithDimensions) {
     ASSERT_EQ(2, report.value_metrics().data(4).bucket_info_size());
     EXPECT_EQ(6, report.value_metrics().data(4).bucket_info(0).values(0).value_long());
     EXPECT_EQ(5, report.value_metrics().data(4).bucket_info(1).values(0).value_long());
+}
+
+TEST(ValueMetricProducerTest, TestSlicedStateWithCondition) {
+    // Set up ValueMetricProducer.
+    ValueMetric metric = ValueMetricProducerTestHelper::createMetricWithConditionAndState(
+            "BATTERY_SAVER_MODE_STATE");
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    EXPECT_CALL(*pullerManager, Pull(tagId, kConfigKey, _, _, _))
+            // Condition changed to true.
+            .WillOnce(Invoke([](int tagId, const ConfigKey&, const int64_t eventTimeNs,
+                                vector<std::shared_ptr<LogEvent>>* data, bool) {
+                EXPECT_EQ(eventTimeNs, bucketStartTimeNs + 20 * NS_PER_SEC);
+                data->clear();
+                data->push_back(
+                        CreateRepeatedValueLogEvent(tagId, bucketStartTimeNs + 20 * NS_PER_SEC, 3));
+                return true;
+            }))
+            // Battery saver mode state changed to OFF.
+            .WillOnce(Invoke([](int tagId, const ConfigKey&, const int64_t eventTimeNs,
+                                vector<std::shared_ptr<LogEvent>>* data, bool) {
+                EXPECT_EQ(eventTimeNs, bucketStartTimeNs + 30 * NS_PER_SEC);
+                data->clear();
+                data->push_back(
+                        CreateRepeatedValueLogEvent(tagId, bucketStartTimeNs + 30 * NS_PER_SEC, 5));
+                return true;
+            }))
+            // Condition changed to false.
+            .WillOnce(Invoke([](int tagId, const ConfigKey&, const int64_t eventTimeNs,
+                                vector<std::shared_ptr<LogEvent>>* data, bool) {
+                EXPECT_EQ(eventTimeNs, bucket2StartTimeNs + 10 * NS_PER_SEC);
+                data->clear();
+                data->push_back(CreateRepeatedValueLogEvent(
+                        tagId, bucket2StartTimeNs + 10 * NS_PER_SEC, 15));
+                return true;
+            }));
+
+    StateManager::getInstance().clear();
+    sp<ValueMetricProducer> valueProducer =
+            ValueMetricProducerTestHelper::createValueProducerWithConditionAndState(
+                    pullerManager, metric, {util::BATTERY_SAVER_MODE_STATE_CHANGED}, {},
+                    ConditionState::kFalse);
+    EXPECT_EQ(1, valueProducer->mSlicedStateAtoms.size());
+
+    // Set up StateManager and check that StateTrackers are initialized.
+    StateManager::getInstance().registerListener(util::BATTERY_SAVER_MODE_STATE_CHANGED,
+                                                 valueProducer);
+    EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
+    EXPECT_EQ(1, StateManager::getInstance().getListenersCount(
+                         util::BATTERY_SAVER_MODE_STATE_CHANGED));
+
+    // Bucket status after battery saver mode ON event.
+    // Condition is false so we do nothing.
+    unique_ptr<LogEvent> batterySaverOnEvent =
+            CreateBatterySaverOnEvent(/*timestamp=*/bucketStartTimeNs + 10 * NS_PER_SEC);
+    StateManager::getInstance().onLogEvent(*batterySaverOnEvent);
+    EXPECT_EQ(0UL, valueProducer->mCurrentSlicedBucket.size());
+    EXPECT_EQ(0UL, valueProducer->mCurrentBaseInfo.size());
+
+    // Bucket status after condition change to true.
+    valueProducer->onConditionChanged(true, bucketStartTimeNs + 20 * NS_PER_SEC);
+    // Base for dimension key {}
+    ASSERT_EQ(1UL, valueProducer->mCurrentBaseInfo.size());
+    std::unordered_map<HashableDimensionKey, std::vector<ValueMetricProducer::BaseInfo>>::iterator
+            itBase = valueProducer->mCurrentBaseInfo.find(DEFAULT_DIMENSION_KEY);
+    EXPECT_TRUE(itBase->second[0].hasBase);
+    EXPECT_EQ(3, itBase->second[0].base.long_value);
+    EXPECT_TRUE(itBase->second[0].hasCurrentState);
+    ASSERT_EQ(1, itBase->second[0].currentState.getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::ON,
+              itBase->second[0].currentState.getValues()[0].mValue.int_value);
+    // Value for key {{}, -1}
+    ASSERT_EQ(1UL, valueProducer->mCurrentSlicedBucket.size());
+    std::unordered_map<MetricDimensionKey, std::vector<ValueMetricProducer::Interval>>::iterator
+            it = valueProducer->mCurrentSlicedBucket.begin();
+    EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
+    ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
+    EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
+              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+    EXPECT_FALSE(it->second[0].hasValue);
+
+    // Bucket status after battery saver mode OFF event.
+    unique_ptr<LogEvent> batterySaverOffEvent =
+            CreateBatterySaverOffEvent(/*timestamp=*/bucketStartTimeNs + 30 * NS_PER_SEC);
+    StateManager::getInstance().onLogEvent(*batterySaverOffEvent);
+    // Base for dimension key {}
+    ASSERT_EQ(1UL, valueProducer->mCurrentBaseInfo.size());
+    itBase = valueProducer->mCurrentBaseInfo.find(DEFAULT_DIMENSION_KEY);
+    EXPECT_TRUE(itBase->second[0].hasBase);
+    EXPECT_EQ(5, itBase->second[0].base.long_value);
+    EXPECT_TRUE(itBase->second[0].hasCurrentState);
+    ASSERT_EQ(1, itBase->second[0].currentState.getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::OFF,
+              itBase->second[0].currentState.getValues()[0].mValue.int_value);
+    // Value for key {{}, ON}
+    ASSERT_EQ(2UL, valueProducer->mCurrentSlicedBucket.size());
+    it = valueProducer->mCurrentSlicedBucket.begin();
+    EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
+    ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::ON,
+              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+    EXPECT_TRUE(it->second[0].hasValue);
+    EXPECT_EQ(2, it->second[0].value.long_value);
+
+    // Pull at end of first bucket.
+    vector<shared_ptr<LogEvent>> allData;
+    allData.clear();
+    allData.push_back(CreateRepeatedValueLogEvent(tagId, bucket2StartTimeNs, 11));
+    valueProducer->onDataPulled(allData, /** succeed */ true, bucket2StartTimeNs);
+
+    EXPECT_EQ(2UL, valueProducer->mPastBuckets.size());
+    EXPECT_EQ(3UL, valueProducer->mCurrentSlicedBucket.size());
+    // Base for dimension key {}
+    ASSERT_EQ(1UL, valueProducer->mCurrentBaseInfo.size());
+    itBase = valueProducer->mCurrentBaseInfo.find(DEFAULT_DIMENSION_KEY);
+    EXPECT_TRUE(itBase->second[0].hasBase);
+    EXPECT_EQ(11, itBase->second[0].base.long_value);
+    EXPECT_TRUE(itBase->second[0].hasCurrentState);
+    ASSERT_EQ(1, itBase->second[0].currentState.getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::OFF,
+              itBase->second[0].currentState.getValues()[0].mValue.int_value);
+
+    // Bucket 2 status after condition change to false.
+    valueProducer->onConditionChanged(false, bucket2StartTimeNs + 10 * NS_PER_SEC);
+    // Base for dimension key {}
+    ASSERT_EQ(1UL, valueProducer->mCurrentBaseInfo.size());
+    itBase = valueProducer->mCurrentBaseInfo.find(DEFAULT_DIMENSION_KEY);
+    EXPECT_FALSE(itBase->second[0].hasBase);
+    EXPECT_TRUE(itBase->second[0].hasCurrentState);
+    ASSERT_EQ(1, itBase->second[0].currentState.getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::OFF,
+              itBase->second[0].currentState.getValues()[0].mValue.int_value);
+    // Value for key {{}, OFF}
+    ASSERT_EQ(3UL, valueProducer->mCurrentSlicedBucket.size());
+    it = valueProducer->mCurrentSlicedBucket.begin();
+    EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
+    ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
+    EXPECT_EQ(BatterySaverModeStateChanged::OFF,
+              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+    EXPECT_TRUE(it->second[0].hasValue);
+    EXPECT_EQ(4, it->second[0].value.long_value);
+
+    // Start dump report and check output.
+    ProtoOutputStream output;
+    std::set<string> strSet;
+    valueProducer->onDumpReport(bucket2StartTimeNs + 50 * NS_PER_SEC,
+                                true /* include recent buckets */, true, NO_TIME_CONSTRAINTS,
+                                &strSet, &output);
+
+    StatsLogReport report = outputStreamToProto(&output);
+    EXPECT_TRUE(report.has_value_metrics());
+    ASSERT_EQ(2, report.value_metrics().data_size());
+
+    ValueMetricData data = report.value_metrics().data(0);
+    EXPECT_EQ(util::BATTERY_SAVER_MODE_STATE_CHANGED, data.slice_by_state(0).atom_id());
+    EXPECT_TRUE(data.slice_by_state(0).has_value());
+    EXPECT_EQ(BatterySaverModeStateChanged::ON, data.slice_by_state(0).value());
+    ASSERT_EQ(1, data.bucket_info_size());
+    EXPECT_EQ(2, data.bucket_info(0).values(0).value_long());
+
+    data = report.value_metrics().data(1);
+    EXPECT_EQ(util::BATTERY_SAVER_MODE_STATE_CHANGED, data.slice_by_state(0).atom_id());
+    EXPECT_TRUE(data.slice_by_state(0).has_value());
+    EXPECT_EQ(BatterySaverModeStateChanged::OFF, data.slice_by_state(0).value());
+    ASSERT_EQ(2, data.bucket_info_size());
+    EXPECT_EQ(6, data.bucket_info(0).values(0).value_long());
+    EXPECT_EQ(4, data.bucket_info(1).values(0).value_long());
+}
+
+/*
+ * Test bucket splits when condition is unknown.
+ */
+TEST(ValueMetricProducerTest, TestForcedBucketSplitWhenConditionUnknownSkipsBucket) {
+    ValueMetric metric = ValueMetricProducerTestHelper::createMetricWithCondition();
+
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+
+    sp<ValueMetricProducer> valueProducer =
+            ValueMetricProducerTestHelper::createValueProducerWithCondition(
+                    pullerManager, metric,
+                    ConditionState::kUnknown);
+
+    // App update event.
+    int64_t appUpdateTimeNs = bucketStartTimeNs + 1000;
+    valueProducer->notifyAppUpgrade(appUpdateTimeNs);
+
+    // Check dump report.
+    ProtoOutputStream output;
+    std::set<string> strSet;
+    int64_t dumpReportTimeNs = bucketStartTimeNs + 10000000000; // 10 seconds
+    valueProducer->onDumpReport(dumpReportTimeNs, false /* include current buckets */, true,
+                                NO_TIME_CONSTRAINTS /* dumpLatency */, &strSet, &output);
+
+    StatsLogReport report = outputStreamToProto(&output);
+    EXPECT_TRUE(report.has_value_metrics());
+    ASSERT_EQ(0, report.value_metrics().data_size());
+    ASSERT_EQ(1, report.value_metrics().skipped_size());
+
+    EXPECT_EQ(NanoToMillis(bucketStartTimeNs),
+              report.value_metrics().skipped(0).start_bucket_elapsed_millis());
+    EXPECT_EQ(NanoToMillis(appUpdateTimeNs),
+              report.value_metrics().skipped(0).end_bucket_elapsed_millis());
+    ASSERT_EQ(1, report.value_metrics().skipped(0).drop_event_size());
+
+    auto dropEvent = report.value_metrics().skipped(0).drop_event(0);
+    EXPECT_EQ(BucketDropReason::CONDITION_UNKNOWN, dropEvent.drop_reason());
+    EXPECT_EQ(NanoToMillis(appUpdateTimeNs), dropEvent.drop_time_millis());
 }
 
 }  // namespace statsd

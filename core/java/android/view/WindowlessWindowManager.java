@@ -41,7 +41,6 @@ public class WindowlessWindowManager implements IWindowSession {
     private final static String TAG = "WindowlessWindowManager";
 
     private class State {
-        //TODO : b/150190730 we should create it when view show and release it when view invisible.
         SurfaceControl mSurfaceControl;
         WindowManager.LayoutParams mParams = new WindowManager.LayoutParams();
         int mDisplayId;
@@ -137,7 +136,8 @@ public class WindowlessWindowManager implements IWindowSession {
                 .setParent(mRootSurface)
                 .setFormat(attrs.format)
                 .setBufferSize(getSurfaceWidth(attrs), getSurfaceHeight(attrs))
-                .setName(attrs.getTitle().toString());
+                .setName(attrs.getTitle().toString())
+                .setCallsite("WindowlessWindowManager.addToDisplay");
         final SurfaceControl sc = b.build();
 
         if (((attrs.inputFeatures &
@@ -209,7 +209,11 @@ public class WindowlessWindowManager implements IWindowSession {
 
     /** @hide */
     protected SurfaceControl getSurfaceControl(View rootView) {
-        final State s = mStateForWindow.get(rootView.getViewRootImpl().mWindow.asBinder());
+        final ViewRootImpl root = rootView.getViewRootImpl();
+        if (root == null) {
+            return null;
+        }
+        final State s = mStateForWindow.get(root.mWindow.asBinder());
         if (s == null) {
             return null;
         }
@@ -245,7 +249,7 @@ public class WindowlessWindowManager implements IWindowSession {
         if (viewFlags == View.VISIBLE) {
             t.setBufferSize(sc, getSurfaceWidth(attrs), getSurfaceHeight(attrs))
                     .setOpaque(sc, isOpaque(attrs)).show(sc).apply();
-            outSurfaceControl.copyFrom(sc);
+            outSurfaceControl.copyFrom(sc, "WindowlessWindowManager.relayout");
         } else {
             t.hide(sc).apply();
             outSurfaceControl.release();

@@ -948,7 +948,7 @@ public class MobileSignalController extends SignalController<
 
     private boolean isSideCarSaValid() {
         return mFiveGState.getNrConfigType() == NrConfigType.SA_CONFIGURATION
-                && mFiveGState.getNrIconType() != NrIconType.INVALID;
+                && mFiveGState.isNrIconTypeValid();
     }
 
     private boolean isSideCarNsaValid() {
@@ -1077,8 +1077,7 @@ public class MobileSignalController extends SignalController<
                         + " dataState=" + state.getDataRegistrationState());
             }
             mServiceState = state;
-            // onDisplayInfoChanged is invoked directly after onServiceStateChanged, so not calling
-            // updateTelephony() to prevent icon flickering in case of overrides.
+            updateTelephony();
         }
 
         @Override
@@ -1088,12 +1087,6 @@ public class MobileSignalController extends SignalController<
                         + " type=" + networkType);
             }
             mDataState = state;
-            if (networkType != mTelephonyDisplayInfo.getNetworkType()) {
-                Log.d(mTag, "onDataConnectionStateChanged:"
-                        + " network type change and reset displayInfo. type=" + networkType);
-                mTelephonyDisplayInfo = new TelephonyDisplayInfo(networkType,
-                        TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE);
-            }
             updateTelephony();
         }
 

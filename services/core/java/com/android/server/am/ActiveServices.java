@@ -658,7 +658,7 @@ public final class ActiveServices {
             }
             mAm.mAppOpsService.startOperation(AppOpsManager.getToken(mAm.mAppOpsService),
                     AppOpsManager.OP_START_FOREGROUND, r.appInfo.uid, r.packageName, null,
-                    true, false, null);
+                    true, false, null, false);
         }
 
         final ServiceMap smap = getServiceMapLocked(r.userId);
@@ -1500,7 +1500,7 @@ public final class ActiveServices {
                         mAm.mAppOpsService.startOperation(
                                 AppOpsManager.getToken(mAm.mAppOpsService),
                                 AppOpsManager.OP_START_FOREGROUND, r.appInfo.uid, r.packageName,
-                                null, true, false, "");
+                                null, true, false, "", false);
                         FrameworkStatsLog.write(FrameworkStatsLog.FOREGROUND_SERVICE_STATE_CHANGED,
                                 r.appInfo.uid, r.shortInstanceName,
                                 FrameworkStatsLog.FOREGROUND_SERVICE_STATE_CHANGED__STATE__ENTER,
@@ -2543,16 +2543,22 @@ public final class ActiveServices {
                             && mAm.isValidSingletonCall(callingUid, sInfo.applicationInfo.uid)) {
                         userId = 0;
                         smap = getServiceMapLocked(0);
-                        ResolveInfo rInfoForUserId0 =
-                                mAm.getPackageManagerInternalLocked().resolveService(service,
-                                        resolvedType, flags, userId, callingUid);
-                        if (rInfoForUserId0 == null) {
-                            Slog.w(TAG_SERVICE,
-                                    "Unable to resolve service " + service + " U=" + userId
-                                            + ": not found");
-                            return null;
+                        // Bypass INTERACT_ACROSS_USERS permission check
+                        final long token = Binder.clearCallingIdentity();
+                        try {
+                            ResolveInfo rInfoForUserId0 =
+                                    mAm.getPackageManagerInternalLocked().resolveService(service,
+                                            resolvedType, flags, userId, callingUid);
+                            if (rInfoForUserId0 == null) {
+                                Slog.w(TAG_SERVICE,
+                                        "Unable to resolve service " + service + " U=" + userId
+                                                + ": not found");
+                                return null;
+                            }
+                            sInfo = rInfoForUserId0.serviceInfo;
+                        } finally {
+                            Binder.restoreCallingIdentity(token);
                         }
-                        sInfo = rInfoForUserId0.serviceInfo;
                     }
                     sInfo = new ServiceInfo(sInfo);
                     sInfo.applicationInfo = mAm.getAppInfoForUser(sInfo.applicationInfo, userId);
@@ -5099,52 +5105,6 @@ public final class ActiveServices {
         if (isDeviceOwner) {
             return true;
         }
-
-        r.mInfoDenyWhileInUsePermissionInFgs =
-                "Background FGS start while-in-use permission restriction [callingPackage: "
-                + callingPackage
-                + "; callingUid: " + callingUid
-                + "; intent: " + intent
-                + "]";
         return false;
-    }
-
-    // TODO: remove this toast after feature development is done
-    void showWhileInUseDebugToastLocked(int uid, int op, int mode) {
-        final UidRecord uidRec = mAm.mProcessList.getUidRecordLocked(uid);
-        if (uidRec == null) {
-            return;
-        }
-
-        for (int i = uidRec.procRecords.size() - 1; i >= 0; i--) {
-            ProcessRecord pr = uidRec.procRecords.valueAt(i);
-            if (pr.uid != uid) {
-                continue;
-            }
-            for (int j = pr.numberOfRunningServices() - 1; j >= 0; j--) {
-                ServiceRecord r = pr.getRunningServiceAt(j);
-                if (!r.isForeground) {
-                    continue;
-                }
-                if (mode == DEBUG_FGS_ALLOW_WHILE_IN_USE) {
-                    if (!r.mAllowWhileInUsePermissionInFgs
-                            && r.mInfoDenyWhileInUsePermissionInFgs != null) {
-                        final String msg = r.mInfoDenyWhileInUsePermissionInFgs
-                                + " affected while-in-use permission:"
-                                + AppOpsManager.opToPublicName(op);
-                        Slog.wtf(TAG, msg);
-                    }
-                } else if (mode == DEBUG_FGS_ENFORCE_TYPE) {
-                    final String msg =
-                            "FGS Missing foregroundServiceType in manifest file [callingPackage: "
-                            + r.mRecentCallingPackage
-                            + "; intent:" + r.intent.getIntent()
-                            + "] affected while-in-use permission:"
-                            + AppOpsManager.opToPublicName(op)
-                            + "; targetSdkVersion:" + r.appInfo.targetSdkVersion;
-                    Slog.wtf(TAG, msg);
-                }
-            }
-        }
     }
 }
