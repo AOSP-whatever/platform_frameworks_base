@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.provider.Settings.ACTION_MEDIA_CONTROLS_SETTINGS
+import android.util.Log
 import android.util.MathUtils
 import android.view.LayoutInflater
 import android.view.View
@@ -25,6 +26,7 @@ import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
 
+private const val TAG = "MediaCarouselController"
 private val settingsIntent = Intent().setAction(ACTION_MEDIA_CONTROLS_SETTINGS)
 
 /**
@@ -39,9 +41,8 @@ class MediaCarouselController @Inject constructor(
     private val mediaHostStatesManager: MediaHostStatesManager,
     private val activityStarter: ActivityStarter,
     @Main executor: DelayableExecutor,
-    mediaManager: MediaDataCombineLatest,
+    mediaManager: MediaDataFilter,
     configurationController: ConfigurationController,
-    mediaDataManager: MediaDataManager,
     falsingManager: FalsingManager
 ) {
     /**
@@ -148,7 +149,7 @@ class MediaCarouselController @Inject constructor(
         mediaCarousel = mediaFrame.requireViewById(R.id.media_carousel_scroller)
         pageIndicator = mediaFrame.requireViewById(R.id.media_page_indicator)
         mediaCarouselScrollHandler = MediaCarouselScrollHandler(mediaCarousel, pageIndicator,
-                executor, mediaDataManager::onSwipeToDismiss, this::updatePageIndicatorLocation,
+                executor, mediaManager::onSwipeToDismiss, this::updatePageIndicatorLocation,
                 falsingManager)
         isRtl = context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
         inflateSettingsButton()
@@ -237,7 +238,9 @@ class MediaCarouselController @Inject constructor(
         val oldData = mediaPlayers[oldKey]
         if (oldData != null) {
             val oldData = mediaPlayers.remove(oldKey)
-            mediaPlayers.put(key, oldData!!)
+            mediaPlayers.put(key, oldData!!)?.let {
+                Log.wtf(TAG, "new key $key already exists when migrating from $oldKey")
+            }
         }
         var existingPlayer = mediaPlayers[key]
         if (existingPlayer == null) {
@@ -249,6 +252,7 @@ class MediaCarouselController @Inject constructor(
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT)
             existingPlayer.view?.player?.setLayoutParams(lp)
+            existingPlayer.bind(data)
             existingPlayer.setListening(currentlyExpanded)
             updatePlayerToState(existingPlayer, noAnimation = true)
             if (existingPlayer.isPlaying) {
@@ -256,19 +260,26 @@ class MediaCarouselController @Inject constructor(
             } else {
                 mediaContent.addView(existingPlayer.view?.player)
             }
-        } else if (existingPlayer.isPlaying &&
-                mediaContent.indexOfChild(existingPlayer.view?.player) != 0) {
-            if (visualStabilityManager.isReorderingAllowed) {
-                mediaContent.removeView(existingPlayer.view?.player)
-                mediaContent.addView(existingPlayer.view?.player, 0)
-            } else {
-                needsReordering = true
+        } else {
+            existingPlayer.bind(data)
+            if (existingPlayer.isPlaying &&
+                    mediaContent.indexOfChild(existingPlayer.view?.player) != 0) {
+                if (visualStabilityManager.isReorderingAllowed) {
+                    mediaContent.removeView(existingPlayer.view?.player)
+                    mediaContent.addView(existingPlayer.view?.player, 0)
+                } else {
+                    needsReordering = true
+                }
             }
         }
-        existingPlayer?.bind(data)
         updatePageIndicator()
         mediaCarouselScrollHandler.onPlayersChanged()
         mediaCarousel.requiresRemeasuring = true
+        // Check postcondition: mediaContent should have the same number of children as there are
+        // elements in mediaPlayers.
+        if (mediaPlayers.size != mediaContent.childCount) {
+            Log.wtf(TAG, "Size of players list and number of views in carousel are out of sync")
+        }
     }
 
     private fun removePlayer(key: String) {
@@ -299,6 +310,7 @@ class MediaCarouselController @Inject constructor(
         if (numPages == 1) {
             pageIndicator.setLocation(0f)
         }
+        updatePageIndicatorAlpha()
     }
 
     /**

@@ -1189,6 +1189,8 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         activity.onRemovedFromDisplay();
         if (activity == mFixedRotationLaunchingApp) {
+            // Make sure the states of associated tokens are also cleared.
+            activity.finishFixedRotationTransform();
             setFixedRotationLaunchingAppUnchecked(null);
         }
     }
@@ -1485,6 +1487,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
                 // Apply normal rotation animation in case of the activity set different requested
                 // orientation without activity switch, or the transition is unset due to starting
                 // window was transferred ({@link #mSkipAppTransitionAnimation}).
+                return false;
+            }
+            if ((mAppTransition.getTransitFlags()
+                    & WindowManager.TRANSIT_FLAG_KEYGUARD_GOING_AWAY_NO_ANIMATION) != 0) {
+                // The transition may be finished before keyguard hidden. In order to avoid the
+                // intermediate orientation change, it is more stable to freeze the display.
                 return false;
             }
         } else if (r != topRunningActivity()) {
@@ -2310,6 +2318,13 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     void onAppTransitionDone() {
         super.onAppTransitionDone();
         mWmService.mWindowsChanged = true;
+        // If the transition finished callback cannot match the token for some reason, make sure the
+        // rotated state is cleared if it is already invisible.
+        if (mFixedRotationLaunchingApp != null && !mFixedRotationLaunchingApp.mVisibleRequested
+                && !mFixedRotationLaunchingApp.isVisible()
+                && !mDisplayRotation.isRotatingSeamlessly()) {
+            clearFixedRotationLaunchingApp();
+        }
     }
 
     @Override
@@ -2739,6 +2754,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     @Override
     void removeImmediately() {
         mRemovingDisplay = true;
+        mDeferredRemoval = false;
         try {
             if (mParentWindow != null) {
                 mParentWindow.removeEmbeddedDisplayContent(this);
@@ -2771,31 +2787,14 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     /** Returns true if a removal action is still being deferred. */
     @Override
-    boolean checkCompleteDeferredRemoval() {
-        boolean stillDeferringRemoval = false;
-
-        for (int i = getChildCount() - 1; i >= 0; --i) {
-            final DisplayChildWindowContainer child = getChildAt(i);
-            stillDeferringRemoval |= child.checkCompleteDeferredRemoval();
-            if (getChildCount() == 0) {
-                // If this display is pending to be removed because it contains an activity with
-                // {@link ActivityRecord#mIsExiting} is true, this display may be removed when
-                // completing the removal of the last activity from
-                // {@link ActivityRecord#checkCompleteDeferredRemoval}.
-                return false;
-            }
-        }
+    boolean handleCompleteDeferredRemoval() {
+        final boolean stillDeferringRemoval = super.handleCompleteDeferredRemoval();
 
         if (!stillDeferringRemoval && mDeferredRemoval) {
             removeImmediately();
             return false;
         }
-        return true;
-    }
-
-    /** @return 'true' if removal of this display content is deferred due to active animation. */
-    boolean isRemovalDeferred() {
-        return mDeferredRemoval;
+        return stillDeferringRemoval;
     }
 
     void adjustForImeIfNeeded() {
@@ -3027,11 +3026,9 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         final ScreenRotationAnimation rotationAnimation = getRotationAnimation();
         if (rotationAnimation != null) {
-            pw.print(subPrefix);
             pw.println("  mScreenRotationAnimation:");
-            rotationAnimation.printTo("  ", pw);
+            rotationAnimation.printTo(subPrefix, pw);
         } else if (dumpAll) {
-            pw.print(subPrefix);
             pw.println("  no ScreenRotationAnimation ");
         }
 
@@ -3722,12 +3719,12 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         drawnWindowTypes.put(TYPE_NOTIFICATION_SHADE, true);
 
         final WindowState visibleNotDrawnWindow = getWindow(w -> {
-            boolean isVisible = w.mViewVisibility == View.VISIBLE && !w.mObscured;
-            boolean hasDrawn = w.isDrawnLw() && w.hasDrawnLw();
-            if (isVisible && !hasDrawn) {
+            final boolean isVisible = w.isVisible() && !w.mObscured;
+            final boolean isDrawn = w.isDrawnLw();
+            if (isVisible && !isDrawn) {
                 return true;
             }
-            if (hasDrawn) {
+            if (isDrawn) {
                 switch (w.mAttrs.type) {
                     case TYPE_BOOT_PROGRESS:
                     case TYPE_BASE_APPLICATION:

@@ -6480,7 +6480,6 @@ package android.net {
     field public static final int TETHERING_USB = 1; // 0x1
     field public static final int TETHERING_WIFI = 0; // 0x0
     field public static final int TETHERING_WIFI_P2P = 3; // 0x3
-    field public static final int TETHERING_WIGIG = 6; // 0x6
     field public static final int TETHER_ERROR_DHCPSERVER_ERROR = 12; // 0xc
     field public static final int TETHER_ERROR_DISABLE_FORWARDING_ERROR = 9; // 0x9
     field public static final int TETHER_ERROR_ENABLE_FORWARDING_ERROR = 8; // 0x8
@@ -7043,7 +7042,6 @@ package android.net.wifi {
     field @NonNull public static final android.os.Parcelable.Creator<android.net.wifi.SoftApCapability> CREATOR;
     field public static final long SOFTAP_FEATURE_ACS_OFFLOAD = 1L; // 0x1L
     field public static final long SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT = 2L; // 0x2L
-    field public static final long SOFTAP_FEATURE_WPA3_OWE = 8L; // 0x8L
     field public static final long SOFTAP_FEATURE_WPA3_SAE = 4L; // 0x4L
   }
 

@@ -482,12 +482,17 @@ public class DisplayContentTests extends WindowTestsBase {
         final DisplayContent defaultDisplay = mWm.getDefaultDisplayContentLocked();
         final WindowState[] windows = createNotDrawnWindowsOn(defaultDisplay,
                 TYPE_WALLPAPER, TYPE_APPLICATION);
+        final WindowState wallpaper = windows[0];
+        assertTrue(wallpaper.mIsWallpaper);
+        // By default WindowState#mWallpaperVisible is false.
+        assertFalse(wallpaper.isVisible());
 
         // Verify waiting for windows to be drawn.
         assertTrue(defaultDisplay.shouldWaitForSystemDecorWindowsOnBoot());
 
-        // Verify not waiting for drawn windows.
-        makeWindowsDrawnState(windows, WindowStateAnimator.HAS_DRAWN);
+        // Verify not waiting for drawn window and invisible wallpaper.
+        setDrawnState(WindowStateAnimator.READY_TO_SHOW, wallpaper);
+        setDrawnState(WindowStateAnimator.HAS_DRAWN, windows[1]);
         assertFalse(defaultDisplay.shouldWaitForSystemDecorWindowsOnBoot());
     }
 
@@ -508,24 +513,8 @@ public class DisplayContentTests extends WindowTestsBase {
         assertTrue(secondaryDisplay.shouldWaitForSystemDecorWindowsOnBoot());
 
         // Verify not waiting for drawn windows on display with system decorations.
-        makeWindowsDrawnState(windows, WindowStateAnimator.HAS_DRAWN);
+        setDrawnState(WindowStateAnimator.HAS_DRAWN, windows);
         assertFalse(secondaryDisplay.shouldWaitForSystemDecorWindowsOnBoot());
-    }
-
-    @Test
-    public void testShouldWaitForSystemDecorWindowsOnBoot_OnWindowReadyToShowAndDrawn() {
-        mWm.mSystemBooted = true;
-        final DisplayContent defaultDisplay = mWm.getDefaultDisplayContentLocked();
-        final WindowState[] windows = createNotDrawnWindowsOn(defaultDisplay,
-                TYPE_WALLPAPER, TYPE_APPLICATION);
-
-        // Verify waiting for windows to be drawn.
-        makeWindowsDrawnState(windows, WindowStateAnimator.READY_TO_SHOW);
-        assertTrue(defaultDisplay.shouldWaitForSystemDecorWindowsOnBoot());
-
-        // Verify not waiting for drawn windows.
-        makeWindowsDrawnState(windows, WindowStateAnimator.HAS_DRAWN);
-        assertFalse(defaultDisplay.shouldWaitForSystemDecorWindowsOnBoot());
     }
 
     private WindowState[] createNotDrawnWindowsOn(DisplayContent displayContent, int... types) {
@@ -538,9 +527,9 @@ public class DisplayContentTests extends WindowTestsBase {
         return windows;
     }
 
-    private static void makeWindowsDrawnState(WindowState[] windows, int state) {
+    private static void setDrawnState(int state, WindowState... windows) {
         for (WindowState window : windows) {
-            window.mHasSurface = true;
+            window.mHasSurface = state != WindowStateAnimator.NO_SURFACE;
             window.mWinAnimator.mDrawState = state;
         }
     }
@@ -1239,8 +1228,7 @@ public class DisplayContentTests extends WindowTestsBase {
     @Test
     public void testNoFixedRotationWithPip() {
         // Make resume-top really update the activity state.
-        doReturn(false).when(mWm.mAtmService).isBooting();
-        doReturn(true).when(mWm.mAtmService).isBooted();
+        setBooted(mWm.mAtmService);
         // Speed up the test by a few seconds.
         mWm.mAtmService.deferWindowLayout();
         doNothing().when(mWm).startFreezingDisplay(anyInt(), anyInt(), any(), anyInt());
@@ -1328,9 +1316,10 @@ public class DisplayContentTests extends WindowTestsBase {
 
         final DisplayRotation dr = dc.getDisplayRotation();
         doCallRealMethod().when(dr).updateRotationUnchecked(anyBoolean());
-        Mockito.doReturn(ROTATION_90).when(dr).rotationForOrientation(anyInt(), anyInt());
+        // Rotate 180 degree so the display doesn't have configuration change. This condition is
+        // used for the later verification of stop-freezing (without setting mWaitingForConfig).
+        doReturn((dr.getRotation() + 2) % 4).when(dr).rotationForOrientation(anyInt(), anyInt());
         final boolean[] continued = new boolean[1];
-        // TODO(display-merge): Remove cast
         doAnswer(
                 invocation -> {
                     continued[0] = true;
@@ -1356,9 +1345,16 @@ public class DisplayContentTests extends WindowTestsBase {
         dc.setRotationAnimation(null);
 
         mWm.updateRotation(true /* alwaysSendConfiguration */, false /* forceRelayout */);
+        // If remote rotation is not finished, the display should not be able to unfreeze.
+        mWm.stopFreezingDisplayLocked();
+        assertTrue(mWm.mDisplayFrozen);
+
         assertTrue(called[0]);
         waitUntilHandlersIdle();
         assertTrue(continued[0]);
+
+        mWm.stopFreezingDisplayLocked();
+        assertFalse(mWm.mDisplayFrozen);
     }
 
     @Test
