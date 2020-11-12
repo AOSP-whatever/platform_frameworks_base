@@ -154,4 +154,6 @@ interface IStatusBarService
      * ABC
      */
     void toggleCameraFlash();
+
+    void startAssist(in Bundle args);
 }
