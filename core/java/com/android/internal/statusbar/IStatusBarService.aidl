@@ -153,7 +153,7 @@ interface IStatusBarService
     /**
      * ABC
      */
-    void toggleCameraFlash();
+    void toggleCameraFlash(boolean proximityCheck);
 
     void startAssist(in Bundle args);
 
@@ -161,4 +161,6 @@ interface IStatusBarService
      * Used to block or unblock usage of gestural navigation
      */
     void setBlockedGesturalNavigation(boolean blocked);
+
+    void triggerElmyraAction(String action);
 }
