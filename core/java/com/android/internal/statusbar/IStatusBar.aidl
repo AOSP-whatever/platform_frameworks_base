@@ -233,4 +233,9 @@ oneway interface IStatusBar
      * ABC
      */
     void toggleCameraFlash();
+
+    /**
+     * Used to block or unblock usage of gestural navigation
+     */
+    void setBlockedGesturalNavigation(boolean blocked);
 }

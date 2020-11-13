@@ -156,4 +156,9 @@ interface IStatusBarService
     void toggleCameraFlash();
 
     void startAssist(in Bundle args);
+
+    /**
+     * Used to block or unblock usage of gestural navigation
+     */
+    void setBlockedGesturalNavigation(boolean blocked);
 }
