@@ -9443,12 +9443,6 @@ public final class Settings {
          * @hide
          */
         public static final String DOZE_ON_CHARGE_NOW = "doze_on_charge_now";
-
-        /**
-         * boolean value. toggles swipe up hint in gestural nav mode
-         * @hide
-         */
-        public static final String NAVIGATION_BAR_HINT = "navigation_bar_hint";
     }
 
     /**
