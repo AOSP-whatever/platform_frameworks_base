@@ -760,8 +760,6 @@ public class InsetsControllerTest {
             mController.cancelExistingAnimations();
             assertEquals(newState.getSource(ITYPE_NAVIGATION_BAR),
                     mTestHost.getModifiedState().peekSource(ITYPE_NAVIGATION_BAR));
-<<<<<<< HEAD
-=======
         });
     }
 
@@ -855,7 +853,6 @@ public class InsetsControllerTest {
             newState.getSource(ITYPE_IME).setVisible(true);
             mController.onStateChanged(newState);
             verify(mTestHost, times(1)).notifyInsetsChanged();
->>>>>>> 01031a1f075348005b2695bfc1353b7b2a9bed49
         });
     }
 
