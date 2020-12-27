@@ -6403,7 +6403,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
     }
 
-<<<<<<< HEAD
+    @Override
+    public void takeAlternativeScreenshot() {
+        mScreenshotRunnable.setScreenshotType(TAKE_SCREENSHOT_FULLSCREEN);
+        mHandler.post(mScreenshotRunnable);
+    }
+
     private void scheduleLongPressKeyEvent(int keyCode) {
         Message msg = mHandler.obtainMessage(MSG_DISPATCH_VOLKEY_SKIP_TRACK, keyCode, 0);
         msg.setAsynchronous(true);
@@ -6760,12 +6765,4 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         } catch (Exception e) {
         }
     }
-=======
-    @Override
-    public void takeAlternativeScreenshot() {
-        mScreenshotRunnable.setScreenshotType(TAKE_SCREENSHOT_FULLSCREEN);
-        mHandler.post(mScreenshotRunnable);
-    }
-
->>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
 }

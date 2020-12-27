@@ -179,17 +179,10 @@ public class CastControllerImpl implements CastController {
         }
 
         synchronized (mProjectionLock) {
-<<<<<<< HEAD
-=======
-            if (mProjection != null && mProjection.getPackageName().equals(
-                    RecorderConstants.APP_PACKAGE_NAME)){
-                mProjection = null;
-            }
             if (mProjection != null && mProjection.getPackageName().equals(
                     StitchImageUtility.STITCHIMAGE_APP_PACKAGE_NAME)){
                 mProjection = null;
             }
->>>>>>> a322ddcf761... fwb: Port long screenshot implementation from Asus
             if (mProjection != null) {
                 final CastDevice device = new CastDevice();
                 device.id = mProjection.getPackageName();
