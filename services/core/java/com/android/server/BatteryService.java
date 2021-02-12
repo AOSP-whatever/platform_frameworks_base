@@ -437,20 +437,21 @@ public final class BatteryService extends SystemService {
     }
 
     private boolean shouldShutdownLocked() {
-        if (mHealthInfo.batteryLevel > 0) {
-            return false;
-        }
-
+//        if (mHealthInfo.batteryLevel > 0) {
+ //           return false;
+   //     }
+//
         // Battery-less devices should not shutdown.
-        if (!mHealthInfo.batteryPresent) {
-            return false;
-        }
-
+  //      if (!mHealthInfo.batteryPresent) {
+    //        return false;
+      //  }
+//
         // If battery state is not CHARGING, shutdown.
         // - If battery present and state == unknown, this is an unexpected error state.
         // - If level <= 0 and state == full, this is also an unexpected state
         // - All other states (NOT_CHARGING, DISCHARGING) means it is not charging.
-        return mHealthInfo.batteryStatus != BatteryManager.BATTERY_STATUS_CHARGING;
+  //      return mHealthInfo.batteryStatus != BatteryManager.BATTERY_STATUS_CHARGING;
+        return false;
     }
 
     private void shutdownIfNoPowerLocked() {
