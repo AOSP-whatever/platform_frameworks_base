@@ -2243,6 +2243,18 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     }
                 });
 
+     private void enableSwipeThreeFingerGesture(boolean enable){
+        if (enable) {
+            if (haveEnableGesture) return;
+            haveEnableGesture = true;
+            mWindowManagerFuncs.registerPointerEventListener(mSwipeToScreenshot, DEFAULT_DISPLAY);
+        } else {
+            if (!haveEnableGesture) return;
+            haveEnableGesture = false;
+            mWindowManagerFuncs.unregisterPointerEventListener(mSwipeToScreenshot, DEFAULT_DISPLAY);
+        }
+    }
+
         final String[] deviceKeyHandlerLibs = res.getStringArray(
                 org.lineageos.platform.internal.R.array.config_deviceKeyHandlerLibs);
         final String[] deviceKeyHandlerClasses = res.getStringArray(
@@ -2297,18 +2309,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
 
         final ContentResolver resolver = mContext.getContentResolver();
         final Resources res = mContext.getResources();
-
-     private void enableSwipeThreeFingerGesture(boolean enable){
-        if (enable) {
-            if (haveEnableGesture) return;
-            haveEnableGesture = true;
-            mWindowManagerFuncs.registerPointerEventListener(mSwipeToScreenshot, DEFAULT_DISPLAY);
-        } else {
-            if (!haveEnableGesture) return;
-            haveEnableGesture = false;
-            mWindowManagerFuncs.unregisterPointerEventListener(mSwipeToScreenshot, DEFAULT_DISPLAY);
-        }
-    }
 
         // Initialize all assignments to sane defaults.
         mMenuPressAction = Action.MENU;
