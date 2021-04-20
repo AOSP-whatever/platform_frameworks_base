@@ -116,24 +116,12 @@ public class ScreenshotHelper {
                     SYSUI_SCREENSHOT_SERVICE);
             final Intent serviceIntent = new Intent();
 
-<<<<<<< HEAD
-            final Runnable mScreenshotTimeout = new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (mScreenshotLock) {
-                        if (mScreenshotConnection != null) {
-                            mContext.unbindService(mScreenshotConnection);
-                            mScreenshotConnection = null;
-                            notifyScreenshotError();
-                        }
-=======
             final Runnable mScreenshotTimeout = () -> {
                 synchronized (mScreenshotLock) {
                     if (mScreenshotConnection != null) {
                         Log.e(TAG, "Timed out before getting screenshot capture response");
                         resetConnection();
                         notifyScreenshotError();
->>>>>>> b73ef520e3f6... [DO NOT MERGE] Close screenshot process on user switched
                     }
                     if (completionConsumer != null) {
                         completionConsumer.accept(null);
