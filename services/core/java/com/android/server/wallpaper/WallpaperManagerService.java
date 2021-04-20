@@ -715,6 +715,7 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                         estimateCrop.bottom = estimateCrop.top + newHeight;
                         cropHint.set(estimateCrop);
                         estimateCrop.scale(1f / options.inSampleSize);
+<<<<<<< HEAD
                     }
 
                     // We've got the safe cropHint; now we want to scale it properly to
@@ -733,6 +734,26 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                         Slog.v(TAG, "  maxTextureSize=" + GLHelper.getMaxTextureSize());
                     }
 
+=======
+                    }
+
+                    // We've got the safe cropHint; now we want to scale it properly to
+                    // the desired rectangle.
+                    // That's a height-biased operation: make it fit the hinted height.
+                    final int safeHeight = (int) (estimateCrop.height() * hRatio);
+                    final int safeWidth = (int) (estimateCrop.width() * hRatio);
+
+                    if (DEBUG) {
+                        Slog.v(TAG, "Decode parameters:");
+                        Slog.v(TAG, "  cropHint=" + cropHint + ", estimateCrop=" + estimateCrop);
+                        Slog.v(TAG, "  down sampling=" + options.inSampleSize
+                                + ", hRatio=" + hRatio);
+                        Slog.v(TAG, "  dest=" + destWidth + "x" + destHeight);
+                        Slog.v(TAG, "  safe=" + safeWidth + "x" + safeHeight);
+                        Slog.v(TAG, "  maxTextureSize=" + GLHelper.getMaxTextureSize());
+                    }
+
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
                     Bitmap cropped = decoder.decodeRegion(cropHint, options);
                     decoder.recycle();
 

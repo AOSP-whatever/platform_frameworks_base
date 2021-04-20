@@ -1842,6 +1842,7 @@ public class AppOpsService extends IAppOpsService.Stub {
      * @return The mode of the op
      */
     private @Mode int checkOperationUnchecked(int code, int uid, @NonNull String packageName,
+<<<<<<< HEAD
                 boolean raw) {
         if (isOpRestrictedDueToSuspend(code, packageName, uid)) {
             return AppOpsManager.MODE_IGNORED;
@@ -1856,6 +1857,12 @@ public class AppOpsService extends IAppOpsService.Stub {
             return AppOpsManager.opToDefaultMode(code);
         }
 
+=======
+                boolean raw, boolean verify) {
+        if (isOpRestrictedDueToSuspend(code, packageName, uid)) {
+            return AppOpsManager.MODE_IGNORED;
+        }
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
         synchronized (this) {
             if (isOpRestrictedLocked(uid, code, packageName, isPrivileged)) {
                 return AppOpsManager.MODE_IGNORED;
@@ -2772,8 +2779,12 @@ public class AppOpsService extends IAppOpsService.Stub {
         return pmi.isPackageSuspended(packageName, UserHandle.getUserId(uid));
     }
 
+<<<<<<< HEAD
     private boolean isOpRestrictedLocked(int uid, int code, String packageName,
             boolean isPrivileged) {
+=======
+    private boolean isOpRestrictedLocked(int uid, int code, String packageName) {
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
         int userHandle = UserHandle.getUserId(uid);
         final int restrictionSetCount = mOpUserRestrictions.size();
 

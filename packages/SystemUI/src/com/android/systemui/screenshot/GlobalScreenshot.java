@@ -649,7 +649,10 @@ class GlobalScreenshot {
 
         // Inflate the screenshot layout
         mScreenshotLayout = layoutInflater.inflate(R.layout.global_screenshot, null);
+<<<<<<< HEAD
         mScreenshotButtonsLayout = mScreenshotLayout.findViewById(R.id.global_screenshot_buttons);
+=======
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
         mBackgroundView = (ImageView) mScreenshotLayout.findViewById(
                 R.id.global_screenshot_background);
         mScreenshotView = (ImageView) mScreenshotLayout.findViewById(R.id.global_screenshot);

@@ -1,10 +1,16 @@
 package com.android.internal.util;
 
+<<<<<<< HEAD
 import static android.view.WindowManager.TAKE_SCREENSHOT_SELECTED_REGION;
 import static android.content.Intent.ACTION_USER_SWITCHED;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+=======
+import static android.content.Intent.ACTION_USER_SWITCHED;
+
+import android.annotation.NonNull;
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -53,6 +59,7 @@ public class ScreenshotHelper {
         mContext = context;
         IntentFilter filter = new IntentFilter(ACTION_USER_SWITCHED);
         mContext.registerReceiver(mBroadcastReceiver, filter);
+<<<<<<< HEAD
     }
 
     /**
@@ -80,6 +87,8 @@ public class ScreenshotHelper {
             @Nullable Consumer<Uri> completionConsumer) {
         takeScreenshot(screenshotType, hasStatus, hasNav, SCREENSHOT_TIMEOUT_MS, handler,
                 completionConsumer);
+=======
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
     }
 
     /**
@@ -122,9 +131,12 @@ public class ScreenshotHelper {
                         Log.e(TAG, "Timed out before getting screenshot capture response");
                         resetConnection();
                         notifyScreenshotError();
+<<<<<<< HEAD
                     }
                     if (completionConsumer != null) {
                         completionConsumer.accept(null);
+=======
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
                     }
                 }
             };

@@ -565,7 +565,11 @@ public class NotificationStackScrollLayout extends ViewGroup implements ScrollAd
                 res.getBoolean(R.bool.config_fadeNotificationsOnDismiss);
         mRoundnessManager.setAnimatedChildren(mChildrenToAddAnimated);
         mRoundnessManager.setOnRoundingChangedCallback(this::invalidate);
+<<<<<<< HEAD
         addOnExpandedHeightChangedListener(mRoundnessManager::setExpanded);
+=======
+        addOnExpandedHeightListener(mRoundnessManager::setExpanded);
+>>>>>>> 19108d2c70748385ad294a4e4e58a4c1183e98a9
         mLockscreenUserManager.addUserChangedListener(userId ->
                 updateSensitiveness(false /* animated */));
         setOutlineProvider(mOutlineProvider);
