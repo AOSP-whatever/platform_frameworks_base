@@ -55,6 +55,11 @@ public abstract class LogicalLight {
     public static final int BRIGHTNESS_MODE_LOW_PERSISTENCE = Brightness.LOW_PERSISTENCE;
 
     /**
+     * Button lights
+     */
+    public abstract int getBrightness();
+
+    /**
      * Set the brightness of a display.
      */
     public abstract void setBrightness(float brightness);

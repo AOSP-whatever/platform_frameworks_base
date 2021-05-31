@@ -270,15 +270,11 @@ public final class PowerManagerService extends SystemService
     private WirelessChargerDetector mWirelessChargerDetector;
     private SettingsObserver mSettingsObserver;
     private DreamManagerInternal mDreamManager;
-<<<<<<< HEAD
     private LogicalLight mAttentionLight;
+    private Light mButtonsLight;
 
     private InattentiveSleepWarningController mInattentiveSleepWarningOverlayController;
     private final AmbientDisplaySuppressionController mAmbientDisplaySuppressionController;
-=======
-    private Light mAttentionLight;
-    private Light mButtonsLight;
->>>>>>> fdf2db7aa613... input: hardware buttons lights integration
 
     private final Object mLock = LockGuard.installNewLock(LockGuard.INDEX_POWER);
 
@@ -1077,21 +1073,15 @@ public final class PowerManagerService extends SystemService
             mAttentionDetector.systemReady(mContext);
 
             PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
-<<<<<<< HEAD
             mScreenBrightnessSettingMinimum = pm.getBrightnessConstraint(
                     PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_MINIMUM);
             mScreenBrightnessSettingMaximum = pm.getBrightnessConstraint(
                     PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_MAXIMUM);
             mScreenBrightnessSettingDefault = pm.getBrightnessConstraint(
                     PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_DEFAULT);
-=======
-            mScreenBrightnessSettingMinimum = pm.getMinimumScreenBrightnessSetting();
-            mScreenBrightnessSettingMaximum = pm.getMaximumScreenBrightnessSetting();
-            mScreenBrightnessSettingDefault = pm.getDefaultScreenBrightnessSetting();
             mButtonBrightnessSettingMinimum = pm.getMinimumButtonBrightnessSetting();
             mButtonBrightnessSettingMaximum = pm.getMaximumButtonBrightnessSetting();
             mButtonBrightnessSettingDefault = pm.getDefaultButtonBrightnessSetting();
->>>>>>> fdf2db7aa613... input: hardware buttons lights integration
 
             SensorManager sensorManager = new SystemSensorManager(mContext, mHandler.getLooper());
 

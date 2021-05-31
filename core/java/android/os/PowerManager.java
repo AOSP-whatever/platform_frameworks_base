@@ -1011,7 +1011,6 @@ public final class PowerManager {
     }
 
     /**
-<<<<<<< HEAD
      * Gets a float screen brightness setting.
      * @hide
      */
@@ -1022,7 +1021,9 @@ public final class PowerManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
-=======
+    }
+
+    /**
      * Gets the minimum supported button brightness setting.
      * The screen may be allowed to become dimmer than this value but
      * this is the minimum value that can be set by the user.
@@ -1051,7 +1052,6 @@ public final class PowerManager {
     public int getDefaultButtonBrightnessSetting() {
         return mContext.getResources().getInteger(
                 com.android.internal.R.integer.config_buttonBrightnessSettingDefault);
->>>>>>> fdf2db7aa613... input: hardware buttons lights integration
     }
 
     /**
