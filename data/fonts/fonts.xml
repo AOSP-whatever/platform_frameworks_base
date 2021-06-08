@@ -111,6 +111,14 @@
     <alias name="source-sans-pro-semi-bold" to="source-sans-pro" weight="600" />
 
     <!-- fallback fonts -->
+
+    <!-- Noto Sans will be the default fallback font.-->
+    <family>
+        <font weight="400" style="normal">NotoSans-Regular.ttf</font>
+        <font weight="400" style="italic">NotoSans-Italic.ttf</font>
+        <font weight="700" style="normal">NotoSans-Bold.ttf</font>
+        <font weight="700" style="italic">NotoSans-BoldItalic.ttf</font>
+    </family>
     <family lang="und-Arab" variant="elegant">
         <font weight="400" style="normal">NotoNaskhArabic-Regular.ttf</font>
         <font weight="700" style="normal">NotoNaskhArabic-Bold.ttf</font>
@@ -690,5 +698,9 @@
     </family>
     <family lang="und-Wara">
         <font weight="400" style="normal">NotoSansWarangCiti-Regular.otf</font>
+    </family>
+    <!-- Absolute Last Resort.-->
+    <family>
+        <font weight="400" style="normal">LastResort.ttf</font>
     </family>
 </familyset>
