@@ -111,14 +111,6 @@
     <alias name="source-sans-pro-semi-bold" to="source-sans-pro" weight="600" />
 
     <!-- fallback fonts -->
-
-    <!-- Noto Sans will be the default fallback font.-->
-    <family>
-        <font weight="400" style="normal">NotoSans-Regular.ttf</font>
-        <font weight="400" style="italic">NotoSans-Italic.ttf</font>
-        <font weight="700" style="normal">NotoSans-Bold.ttf</font>
-        <font weight="700" style="italic">NotoSans-BoldItalic.ttf</font>
-    </family>
     <family lang="und-Arab" variant="elegant">
         <font weight="400" style="normal">NotoNaskhArabic-Regular.ttf</font>
         <font weight="700" style="normal">NotoNaskhArabic-Bold.ttf</font>
@@ -604,6 +596,13 @@
     </family>
     <family lang="und-Zsym">
         <font weight="400" style="normal">NotoSansSymbols-Regular-Subsetted2.ttf</font>
+    </family>
+    <!-- Noto Sans will be the default fallback font.-->
+    <family>
+        <font weight="400" style="normal">NotoSans-Regular.ttf</font>
+        <font weight="400" style="italic">NotoSans-Italic.ttf</font>
+        <font weight="700" style="normal">NotoSans-Bold.ttf</font>
+        <font weight="700" style="italic">NotoSans-BoldItalic.ttf</font>
     </family>
     <!--
         Tai Le, Yi, Mongolian, and Phags-pa are intentionally kept last, to make sure they don't
